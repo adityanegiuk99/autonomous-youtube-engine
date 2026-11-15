@@ -1,6 +1,6 @@
 # Autonomous YouTube Engine (AYE)
 
-AYE is planned as a human-approved, multi-channel content operations platform. The repository is progressing through **Phases 1–7**. It includes FastAPI, PostgreSQL migrations, channel CRUD, RSS discovery/source packs, opportunity scoring, versioned human-authored scripts/storyboards, media-backed FFmpeg rendering, technical QA, exact-version human approval, and sample-aware CSV analytics imports.
+AYE is planned as a human-approved, multi-channel content operations platform. The repository is progressing through **Phases 1–8**. It includes FastAPI, PostgreSQL migrations, channel CRUD, RSS discovery/source packs, opportunity scoring, versioned human-authored scripts/storyboards, media-backed FFmpeg rendering, technical QA, exact-version human approval, a persistent Approval Center, and sample-aware CSV analytics imports.
 
 ## Run locally with Docker
 
@@ -16,6 +16,7 @@ docker compose up --build
 - Channel API: <http://localhost:8000/api/v1/channels>
 - Trend Radar: <http://localhost:3000/trends>
 - Content pipeline: <http://localhost:3000/ideas>
+- Approval Center: <http://localhost:3000/approvals>
 
 The dashboard prompts for the token and keeps it in browser session storage. The Compose database credentials are for local development only. The bearer token is single-owner local access control, not production authentication or multi-user authorization; do not expose this stack publicly.
 
@@ -35,4 +36,4 @@ The Analytics page accepts normalized cumulative CSV snapshots and summarizes th
 
 ## Current limits
 
-Channel records are configuration only and do not indicate that a YouTube account is connected. Multi-user authentication, Google OAuth, AI research/script generation, TTS, publishing, live YouTube Analytics integration, and Redis workers are not implemented yet. See [the roadmap](docs/roadmap.md), [architecture](docs/architecture.md), [data model](docs/data-model.md), [agent contracts](docs/agent-contracts.md), and [API contract](docs/api.md).
+Channel records are configuration only and do not indicate that a YouTube account is connected. Multi-user authentication, Google OAuth, AI research/script generation, TTS, publishing, live YouTube Analytics integration, and Redis workers are not implemented yet. Backups and restore require operator-managed snapshots of both PostgreSQL and media files; see [the operations runbook](docs/operations.md). See [the roadmap](docs/roadmap.md), [architecture](docs/architecture.md), [data model](docs/data-model.md), [agent contracts](docs/agent-contracts.md), and [API contract](docs/api.md).
