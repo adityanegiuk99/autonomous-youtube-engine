@@ -14,7 +14,7 @@ Base path: `/api/v1`. JSON requests and responses use snake_case. Errors use sta
 | PATCH | `/channels/{channel_id}` | Update supplied configuration fields |
 | DELETE | `/channels/{channel_id}` | Remove a configuration with no dependent content; returns 409 when ideas reference it |
 
-Channel fields: `name` (required), `niche`, `language`, `target_country`, `description`, `is_active`. IDs, timestamps, YouTube identity, OAuth status, and workflow state are server-owned. The API does not claim that a configured channel is connected to YouTube.
+Channel fields: `name` (required), `niche`, `language`, `target_country`, `description`, `audience_profile`, `brand_voice`, `visual_guidelines`, `content_pillars` (up to 10 unique entries), `preferred_formats` (`short` and/or `long`), `publishing_frequency_per_week` (0–14), and `is_active`. IDs, timestamps, YouTube identity, OAuth status, and workflow state are server-owned. The API does not claim that a configured channel is connected to YouTube. These channel-specific editorial settings are configuration input; no AI currently applies them automatically.
 
 ## Remaining resource groups
 

@@ -24,6 +24,8 @@ The dashboard prompts for the token and keeps it in browser session storage. The
 
 The overview dashboard reads persisted channel, trend, idea, and render counts from the API. Configured channel records are not YouTube connections, and QA-passed renders without a recorded decision may be stale if newer content versions exist.
 
+Channel configuration stores an audience profile, brand voice, visual guidelines, content pillars, preferred video formats, and an optional weekly publishing target. These are planning inputs for human-authored content; the current system does not apply them automatically.
+
 ## Run services separately
 
 API: install `backend/pyproject.toml` dependencies in a Python 3.11+ environment, set `AYE_DATABASE_URL` and a random `AYE_API_TOKEN` of at least 32 characters (see `backend/.env.example`), run `alembic upgrade head` from `backend/`, then `uvicorn app.main:app --reload` from `backend/`.

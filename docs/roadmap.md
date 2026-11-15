@@ -4,7 +4,7 @@ The attached product blueprint defines the destination. This repository starts w
 
 | Phase | Deliverable | Status |
 |---|---|---|
-| 1. Foundation | FastAPI, Next.js shell, PostgreSQL development service, configuration, channel management | Partial: local bearer token and channel CRUD UI; multi-user identity remains |
+| 1. Foundation | FastAPI, Next.js shell, PostgreSQL development service, configuration, channel management | Partial: local bearer token, channel CRUD, and per-channel audience/editorial profile settings; multi-user identity remains |
 | 2. Trend intelligence | RSS/provider adapters, normalization, deduplication, scoring, Trend Radar | In progress: RSS adapter and UI |
 | 3. Research and strategy | sourced dossiers, claim extraction, opportunity scoring and routing | Partial: RSS source packs, manually authored source-linked claim dossiers and assessments, opportunity scoring, manual channel routing; automated claim extraction/verification pending provider |
 | 4. Content generation | versioned scripts, formats, storyboard editor | Partial: versioned human script/storyboard API and Studio UI; scripts can attach immutable source dossier snapshots whose hashes flow into production approval; AI generation pending provider |
