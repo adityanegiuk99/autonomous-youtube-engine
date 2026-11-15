@@ -104,7 +104,7 @@ def render_production(scenes: list[dict], assets: dict[UUID, object], video_id: 
     total_duration = sum(float(scene["duration_seconds"]) for scene in scenes)
     if not 0 < total_duration <= 900:
         raise ValueError("Production duration must be between 0 and 900 seconds")
-    width, height = (720, 1280) if aspect == "short" else (1280, 720)
+    width, height = (1080, 1920) if aspect == "short" else (1920, 1080)
     media_dir.mkdir(parents=True, exist_ok=True)
     video_key = f"{video_id}.mp4"
     thumb_key = f"{video_id}-thumb.jpg"
