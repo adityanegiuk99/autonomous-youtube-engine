@@ -11,6 +11,7 @@ class Settings(BaseSettings):
     max_feed_bytes: int = Field(default=2_000_000, ge=4096, le=20_000_000)
     media_dir: str = "media"
     ffmpeg_binary: str = "ffmpeg"
+    ffprobe_binary: str = "ffprobe"
     api_token: str | None = None
 
     model_config = SettingsConfigDict(env_prefix="AYE_", env_file=".env", extra="ignore")

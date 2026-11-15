@@ -100,6 +100,22 @@ class StoryboardVersion(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utc_now)
 
 
+class MediaAsset(Base):
+    __tablename__ = "media_assets"
+
+    id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True, default=uuid4)
+    storage_key: Mapped[str] = mapped_column(String(80), nullable=False, unique=True)
+    asset_type: Mapped[str] = mapped_column(String(16), nullable=False)
+    mime_type: Mapped[str] = mapped_column(String(64), nullable=False)
+    checksum: Mapped[str] = mapped_column(String(64), nullable=False)
+    license_type: Mapped[str] = mapped_column(String(32), nullable=False)
+    rights_confirmed: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    source_url: Mapped[str | None] = mapped_column(String(2048))
+    original_filename: Mapped[str] = mapped_column(String(255), nullable=False)
+    duration_seconds: Mapped[float | None] = mapped_column(Float)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utc_now)
+
+
 class RenderedVideo(Base):
     __tablename__ = "videos"
 
@@ -108,8 +124,26 @@ class RenderedVideo(Base):
     storyboard_version_id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), ForeignKey("storyboards.id", ondelete="RESTRICT"), nullable=False)
     storage_key: Mapped[str] = mapped_column(String(80), nullable=False, unique=True)
     checksum: Mapped[str] = mapped_column(String(64), nullable=False)
+    content_hash: Mapped[str | None] = mapped_column(String(64))
     duration_seconds: Mapped[float] = mapped_column(Float, nullable=False)
     width: Mapped[int] = mapped_column(nullable=False)
     height: Mapped[int] = mapped_column(nullable=False)
     status: Mapped[str] = mapped_column(String(32), nullable=False, default="PREVIEW_RENDERED")
+    video_type: Mapped[str] = mapped_column(String(24), nullable=False, default="animatic")
+    thumbnail_key: Mapped[str | None] = mapped_column(String(80))
+    media_manifest: Mapped[list[dict] | None] = mapped_column(JSON)
+    qa_report: Mapped[dict | None] = mapped_column(JSON)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utc_now)
+
+
+class Approval(Base):
+    __tablename__ = "approvals"
+
+    id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True, default=uuid4)
+    video_id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), ForeignKey("videos.id", ondelete="RESTRICT"), nullable=False, index=True)
+    content_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    reviewer: Mapped[str] = mapped_column(String(120), nullable=False)
+    decision: Mapped[str] = mapped_column(String(24), nullable=False)
+    review_checks: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    notes: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utc_now)

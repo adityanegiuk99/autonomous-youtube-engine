@@ -9,7 +9,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.models import ContentIdea, ScriptVersion, StoryboardVersion, utc_now
+from app.models import ContentIdea, MediaAsset, ScriptVersion, StoryboardVersion, utc_now
 from app.security import require_api_token
 
 router = APIRouter(prefix="/ideas", tags=["content"], dependencies=[Depends(require_api_token)])
@@ -38,6 +38,8 @@ class Scene(BaseModel):
     asset_type: str = Field(default="user_supplied", max_length=40)
     transition: str = Field(default="cut", max_length=40)
     subtitle: str = Field(default="", max_length=2000)
+    image_asset_id: UUID | None = None
+    audio_asset_id: UUID | None = None
     source_attribution: list[str] = Field(default_factory=list, max_length=20)
 
 
@@ -95,8 +97,20 @@ def create_storyboard(idea_id: UUID, payload: StoryboardCreate, db: Session = De
     script = db.get(ScriptVersion, payload.script_version_id)
     if script is None or script.content_idea_id != idea_id:
         raise HTTPException(status_code=404, detail="Script version not found for this idea")
-    version = (db.scalar(select(func.max(StoryboardVersion.version)).where(StoryboardVersion.content_idea_id == idea_id)) or 0) + 1
     scenes = [scene.model_dump() for scene in payload.scenes]
+    asset_ids = {asset_id for scene in scenes for asset_id in (scene["image_asset_id"], scene["audio_asset_id"]) if asset_id}
+    assets = {asset.id: asset for asset in db.scalars(select(MediaAsset).where(MediaAsset.id.in_(asset_ids))).all()} if asset_ids else {}
+    for scene in scenes:
+        for field, expected_type in (("image_asset_id", "image"), ("audio_asset_id", "audio")):
+            asset_id = scene[field]
+            if asset_id is None:
+                continue
+            asset = assets.get(asset_id)
+            if asset is None or asset.asset_type != expected_type or not asset.rights_confirmed:
+                raise HTTPException(status_code=422, detail=f"{field} must reference an uploaded, rights-confirmed {expected_type} asset")
+            if asset.license_type != "owned" and not scene["source_attribution"]:
+                raise HTTPException(status_code=422, detail="Add source attribution for non-owned media")
+    version = (db.scalar(select(func.max(StoryboardVersion.version)).where(StoryboardVersion.content_idea_id == idea_id)) or 0) + 1
     serialized = json.dumps(scenes, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
     storyboard = StoryboardVersion(content_idea_id=idea_id, script_version_id=script.id, version=version,
                                    scenes=scenes, content_hash=hashlib.sha256(serialized.encode("utf-8")).hexdigest(),

@@ -12,11 +12,10 @@ This is the conceptual model, not a claim that every table is implemented. Postg
 | TrendItem | source, canonical topic key, title, references, trend measurements, observed time |
 | ResearchDocument | trend item, version, source-pack or researched dossier, structured content, immutable content hash |
 | ContentIdea | channel, trend (optional), topic, format, score components, state |
-| ResearchDocument | idea, source references, claims, conflicts, generated time |
 | ScriptVersion | idea, version, body/structured sections, source links, content hash |
 | StoryboardVersion | script version, scenes, timing, asset requirements, content hash |
-| MediaAsset | owner workflow, URI, MIME type, checksum, license/provenance, metadata |
-| Video | idea, script/storyboard versions, render asset, QA status, metadata, content hash |
+| MediaAsset | storage key, type, checksum, user-attested rights, source URL, original filename |
+| Video | idea, storyboard version, render asset, thumbnail, media manifest, technical QA report, content hash |
 | Approval | video, exact content hash, reviewer, decision, notes, timestamp |
 | PublishJob | video, approval, channel, visibility/schedule, idempotency key, provider ID, status |
 | AnalyticsSnapshot | channel/video, period, metrics, source, collected time |
@@ -36,4 +35,4 @@ This is the conceptual model, not a claim that every table is implemented. Postg
 
 ## Foundation implementation
 
-Implemented migrations currently cover channel configuration, trend items, opportunity ideas, human-authored script/storyboard versions, silent preview records, and RSS source packs. User identity, OAuth connections, verified research claims, final production assets, approvals, publishing jobs, and analytics remain future migrations. The initial API must not expose fields that imply an external account has been connected or verified.
+Implemented migrations currently cover channel configuration, trend items, opportunity ideas, human-authored script/storyboard versions, silent previews, RSS source packs, uploaded media assets, technical QA metadata, and content-hash-bound human approvals. User identity, OAuth connections, verified research claims, publishing jobs, and analytics remain future migrations. The initial API must not expose fields that imply an external account has been connected or verified.

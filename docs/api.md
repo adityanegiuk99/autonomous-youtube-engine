@@ -18,7 +18,7 @@ Channel fields: `name` (required), `niche`, `language`, `target_country`, `descr
 
 ## Remaining resource groups
 
-Source packs preserve RSS metadata and URLs but do not verify factual claims. AI research synthesis, production QA, human approval, publishing, analytics, and agent-run monitoring are not implemented. Publishing routes must bind to immutable content versions and enforce authenticated ownership before they are added.
+Source packs preserve RSS metadata and URLs but do not verify factual claims. AI research synthesis, publishing, analytics, and agent-run monitoring are not implemented. Human approval is available only for exact production versions with technical QA; publishing routes must additionally enforce channel ownership and OAuth authorization.
 
 ## Opportunity and content endpoints
 
@@ -31,13 +31,19 @@ Source packs preserve RSS metadata and URLs but do not verify factual claims. AI
 | GET | `/ideas/{id}/storyboards` | List storyboard versions |
 | POST | `/ideas/{id}/storyboards` | Save scenes linked to an exact script version and content hash |
 | POST | `/ideas/{id}/render-preview?storyboard_version_id=` | Render a silent graphic animatic preview with FFmpeg |
+| POST | `/ideas/{id}/render-production?storyboard_version_id=` | Render scenes from rights-confirmed user image/audio assets and run technical QA |
+| GET | `/media-assets` | List uploaded image/audio assets and provenance |
+| POST | `/media-assets` | Upload supported media with rights attestation and license/source fields |
+| GET | `/media-assets/{id}/file` | Retrieve an uploaded asset |
+| POST | `/videos/{id}/approvals` | Record a human decision bound to the current content hash |
+| GET | `/videos/{id}/approvals` | List immutable approval decisions |
 | GET | `/videos?idea_id=&limit=50` | List rendered previews |
 | GET | `/videos/{id}` | Retrieve preview metadata |
 | GET | `/videos/{id}/file` | Download the MP4 preview |
 
 The opportunity score uses the blueprint's weighted formula. The RSS heuristic is used as the trend-velocity input, and engagement, audience relevance, originality, and research quality are user estimates. Script and storyboard endpoints save human input; they do not claim AI generation.
 
-Preview rendering creates scene cards from storyboard text and exports a silent MP4. It is an animatic for reviewing pacing and scene order, not a finished video: it has no voiceover, sourced visuals, thumbnail, or production QA pass. FFmpeg is installed in the API image; preview artifacts are stored in the `aye_media` Docker volume.
+Preview rendering creates scene cards from storyboard text and exports a silent MP4. Production rendering requires a rights-attested image and audio asset for every scene, uses scene-level subtitle overlays, generates a thumbnail, and checks MP4/H.264/AAC, resolution, duration, and source-file integrity. Human approval requires four review confirmations, checks that source/render files and version hashes still match, and rejects stale script/storyboard versions. Technical QA does not verify editorial claims or the truth of user-supplied license declarations. Approval is not YouTube publish authorization. Files are stored in the `aye_media` Docker volume.
 
 ## Trend intelligence
 
