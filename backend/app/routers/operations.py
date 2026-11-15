@@ -211,7 +211,7 @@ def _attempt_read(attempt: ProductionAttempt, now: datetime, stale_after: int) -
         video_id=attempt.video_id, render_duration_seconds=attempt.render_duration_seconds,
         source_bytes=attempt.source_bytes, output_bytes=attempt.output_bytes,
         failure_class=attempt.failure_class,
-        is_stale=attempt.status == "running" and age >= stale_after,
+        is_stale=attempt.status in ("queued", "running") and age >= stale_after,
         age_seconds=age,
     )
 
@@ -239,10 +239,11 @@ def recover_production_attempt(attempt_id: UUID, db: Session = Depends(get_db)):
     if attempt is None:
         raise HTTPException(status_code=404, detail="Production attempt not found")
     settings = get_settings()
-    if attempt.status != "running" and attempt.failure_class == "interrupted":
+    if attempt.status not in ("queued", "running") and attempt.failure_class in ("interrupted", "queue_timeout"):
         return _attempt_read(attempt, utc_now(), settings.production_stale_after_seconds)
-    if attempt.status != "running":
-        raise HTTPException(status_code=409, detail="Only an interrupted running attempt can be recovered")
+    if attempt.status not in ("queued", "running"):
+        raise HTTPException(status_code=409, detail="Only a queued or running production attempt can be recovered")
+    interrupted_status = attempt.status
     now = utc_now()
     started_at = _aware_utc(attempt.started_at)
     age_seconds = max(0, int((now - started_at).total_seconds()))
@@ -269,17 +270,19 @@ def recover_production_attempt(attempt_id: UUID, db: Session = Depends(get_db)):
     idea.status = "PRODUCTION_FAILED"
     attempt.status = "failed"
     attempt.finished_at = now
-    attempt.render_duration_seconds = round((now - started_at).total_seconds(), 3)
-    attempt.failure_class = "interrupted"
+    attempt.render_duration_seconds = round((now - started_at).total_seconds(), 3) if interrupted_status == "running" else None
+    failure_class = "interrupted" if interrupted_status == "running" else "queue_timeout"
+    attempt.failure_class = failure_class
     record_workflow_event(db, idea.id, idea.status, "production_failed",
-                          "Stale production attempt was recovered as interrupted; inspect the storyboard and media before retrying",
+                          ("Stale production attempt was recovered as interrupted; inspect the storyboard and media before retrying"
+                           if failure_class == "interrupted" else "Stale queued production attempt was recovered after the worker failed to claim it"),
                           {"storyboard_version_id": str(attempt.storyboard_version_id),
                            "attempt_number": attempt.attempt_number,
                            "attempt_id": str(attempt.id),
                            "render_duration_seconds": attempt.render_duration_seconds,
                            "source_bytes": attempt.source_bytes,
                            "partial_output_cleanup_succeeded": cleanup_succeeded,
-                           "failure_class": "interrupted"},
+                           "failure_class": failure_class},
                           previous_state=previous_state, actor="local-owner")
     db.commit()
     db.refresh(attempt)

@@ -54,7 +54,7 @@ The Operations page offers a read-only media audit at `GET /api/v1/operations/me
 
 ## Background production worker
 
-Docker Compose runs a separate `worker` service. Studio queues a production attempt in PostgreSQL and polls its durable status; the worker claims queued rows with row locking so worker replicas cannot claim the same attempt. `AYE_WORKER_POLL_SECONDS` controls the idle poll interval. API and worker share the `aye_media` volume. The worker waits for database schema startup, but does not provide automatic retries, heartbeats, or resumable FFmpeg checkpoints. A worker crash leaves a running attempt for manual stale recovery.
+Docker Compose runs a separate `worker` service. Studio queues a production attempt in PostgreSQL and polls its durable status; the worker claims queued rows with row locking so worker replicas cannot claim the same attempt. `AYE_WORKER_POLL_SECONDS` controls the idle poll interval. API and worker share the `aye_media` volume. The worker waits for database schema startup, but does not provide automatic retries, heartbeats, or resumable FFmpeg checkpoints. A stopped worker can leave queued attempts unclaimed; Operations marks queued and running attempts stale after the configured timeout.
 
 ## Local publishing schedule
 
@@ -62,4 +62,4 @@ The Publishing page can save and cancel private-only schedule records for an exa
 
 ## Recover an interrupted production render
 
-Production render attempts are committed before FFmpeg starts. If the worker exits mid-render, the Operations page shows the attempt as running. Once it is older than `AYE_PRODUCTION_STALE_AFTER_SECONDS` (six hours by default), an operator can recover it. Recovery marks that attempt failed and removes its attempt-specific MP4 and thumbnail when possible. It does not resume FFmpeg from a checkpoint. The interrupted attempt counts against `AYE_MAX_PRODUCTION_ATTEMPTS`; inspect the source files and rendering configuration before retrying. If cleanup fails, use the media integrity audit to inspect leftover files.
+Production render attempts are committed before FFmpeg starts. If the worker exits mid-render, the Operations page shows the attempt as running. A queued attempt older than the same threshold indicates that no worker claimed it. Once either state is older than `AYE_PRODUCTION_STALE_AFTER_SECONDS` (six hours by default), an operator can recover it after checking worker health. Recovery marks it failed and removes its attempt-specific MP4 and thumbnail when possible. It does not resume FFmpeg from a checkpoint. The recovered attempt counts against `AYE_MAX_PRODUCTION_ATTEMPTS`; inspect the source files and rendering configuration before retrying. If cleanup fails, use the media integrity audit to inspect leftover files.
