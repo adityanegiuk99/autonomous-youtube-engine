@@ -10,6 +10,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
+from app.content_checks import unresolved_script_sections
 from app.content_hashing import production_content_hash
 from app.database import get_db
 from app.models import Approval, ContentIdea, MediaAsset, RenderedVideo, ScriptVersion, StoryboardVersion, utc_now
@@ -126,6 +127,14 @@ def create_approval(video_id: UUID, payload: ApprovalCreate, reviewer: str = Dep
     storyboard = db.get(StoryboardVersion, video.storyboard_version_id)
     if idea is None or storyboard is None:
         raise HTTPException(status_code=409, detail="Production content record is incomplete")
+    if payload.decision == "approve":
+        script = db.get(ScriptVersion, storyboard.script_version_id)
+        if script is None:
+            raise HTTPException(status_code=409, detail="Script version is missing")
+        unfinished_sections = unresolved_script_sections(script.body)
+        if unfinished_sections:
+            names = ", ".join(unfinished_sections[:10])
+            raise HTTPException(status_code=422, detail=f"Finish or remove outline placeholders before approval: {names}")
     current_hash = _active_content_hash(video, idea, storyboard, db)
     previous = db.scalar(select(Approval).where(Approval.video_id == video_id).order_by(Approval.created_at.desc()).limit(1))
     if previous is not None:

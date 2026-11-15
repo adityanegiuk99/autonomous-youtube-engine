@@ -10,7 +10,8 @@ from sqlalchemy import select, text
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.models import Approval, ContentIdea, PublishJob, RenderedVideo, StoryboardVersion, utc_now
+from app.content_checks import unresolved_script_sections
+from app.models import Approval, ContentIdea, PublishJob, RenderedVideo, ScriptVersion, StoryboardVersion, utc_now
 from app.routers.approvals import _active_content_hash
 from app.security import require_api_token
 from app.workflows import record_workflow_event
@@ -100,6 +101,13 @@ def create_publish_schedule(payload: PublishScheduleCreate, response: Response,
     if approval is None or approval.decision != "approve":
         raise HTTPException(status_code=409, detail="A human approval decision is required before scheduling")
     current_hash = _active_content_hash(video, idea, storyboard, db)
+    script = db.get(ScriptVersion, storyboard.script_version_id)
+    if script is None:
+        raise HTTPException(status_code=409, detail="Script version is missing")
+    unfinished_sections = unresolved_script_sections(script.body)
+    if unfinished_sections:
+        names = ", ".join(unfinished_sections[:10])
+        raise HTTPException(status_code=422, detail=f"Finish or remove outline placeholders before scheduling: {names}")
     if approval.content_hash != current_hash or video.content_hash != current_hash:
         raise HTTPException(status_code=409, detail="The human approval does not match the current content hash")
 

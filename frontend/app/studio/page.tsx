@@ -18,6 +18,17 @@ type ReviewChecks = { editorial_accuracy_reviewed: boolean; sources_reviewed: bo
 const api = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000/api/v1";
 const blankScene = (): SceneInput => ({ duration_seconds: "5", voiceover: "", visual_description: "", subtitle: "", image_asset_id: "", audio_asset_id: "" });
 
+function unresolvedOutlineSections(body: string) {
+  let section = "Script";
+  const unresolved: string[] = [];
+  for (const line of body.split("\n")) {
+    const heading = line.match(/^\s*#{1,6}\s+(.+?)\s*#*\s*$/);
+    if (heading) section = heading[1].trim();
+    else if (/^\s*\[Write this section\]\s*$/i.test(line)) unresolved.push(section);
+  }
+  return [...new Set(unresolved)];
+}
+
 export default function StudioPage() {
   const [ideas, setIdeas] = useState<Idea[]>([]);
   const [ideaId, setIdeaId] = useState("");
@@ -233,6 +244,7 @@ export default function StudioPage() {
   const spokenDraft = scriptBody.split("\n").filter(line => !line.trimStart().startsWith("## ") && !/^\[.*\]$/.test(line.trim())).join(" ");
   const scriptWordCount = spokenDraft.trim() ? spokenDraft.trim().split(/\s+/).length : 0;
   const estimatedSpeechSeconds = Math.round(scriptWordCount / 140 * 60);
+  const unfinishedScriptSections = unresolvedOutlineSections(scriptBody);
   return <main className="page-wrap">
     <div className="section-heading"><div><h2>Video Studio</h2><p className="muted">Version scripts and storyboards, then render a silent animatic for review.</p></div><a className="text-button" href="/ideas">← Content pipeline</a></div>
     <label className="studio-select">Content idea<select value={ideaId} onChange={event => setIdeaId(event.target.value)}><option value="">Choose an idea</option>{ideas.map(idea => <option key={idea.id} value={idea.id}>{idea.title} · {idea.format}</option>)}</select></label>
@@ -243,6 +255,7 @@ export default function StudioPage() {
       <form className="studio-panel" onSubmit={saveScript}>
         <div className="studio-panel-title"><h3>Script</h3><span>{scripts.length ? `${scripts.length} saved version(s)` : "No versions yet"}</span></div>
         <label>Human-authored script<textarea value={scriptBody} onChange={event => setScriptBody(event.target.value)} required maxLength={100000} placeholder="Write or paste your script. Saving creates an immutable version." /></label>
+        {unfinishedScriptSections.length > 0 && <p className="error-message">Unfinished outline placeholders remain in: {unfinishedScriptSections.join(", ")}. You can save this draft, but approval and scheduling will be blocked until you replace or remove them.</p>}
         <div className="script-guidance"><span>{scriptWordCount} spoken words · about {estimatedSpeechSeconds} sec at 140 words/min</span><button className="secondary" type="button" onClick={appendScriptOutline}>Append {selected.format === "short" ? "Shorts" : "long-form"} outline</button></div>
         <div className="studio-select"><strong>Research dossiers to cite with this script</strong><small>Choose up to 20 versions; combined snapshots are limited to 500 KB.</small>{researchDossiers.length ? researchDossiers.map(dossier => <label className="review-check" key={dossier.id}><input type="checkbox" checked={selectedResearchIds.includes(dossier.id)} disabled={selectedResearchIds.length >= 20 && !selectedResearchIds.includes(dossier.id)} onChange={event => setSelectedResearchIds(current => event.target.checked ? [...current, dossier.id] : current.filter(id => id !== dossier.id))} />Version {dossier.version}: {dossier.content.topic}</label>) : <p className="muted">{selected?.trend_item_id ? "No manual dossier exists for this trend yet. Create one in Trend Radar." : "Link this idea to a trend to attach research dossiers."}</p>}</div>
         {scripts.find(item => item.id === scriptId)?.source_references?.map(source => <div className="scene-editor" key={source.research_document_id}><strong>Cited dossier v{source.version}: {source.content.topic}</strong>{source.content.claims?.map((claim, index) => <div key={index}><p>{claim.statement} · {claim.assessment}</p><div className="source-links">{claim.references.map(reference => <a href={reference.source_url} target="_blank" rel="noreferrer" key={reference.source_url}>{reference.source_title} ↗</a>)}</div></div>)}</div>)}
