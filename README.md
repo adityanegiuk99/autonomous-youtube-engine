@@ -1,6 +1,6 @@
 # Autonomous YouTube Engine (AYE)
 
-AYE is planned as a human-approved, multi-channel content operations platform. The repository is progressing through **Phases 1–8**. It includes FastAPI, PostgreSQL migrations, channel CRUD, RSS discovery/source packs, opportunity scoring, versioned human-authored scripts/storyboards, a PostgreSQL-backed FFmpeg production worker queue, worker liveness monitoring, technical QA, exact-version human approval, a persistent Approval Center, normalized CSV analytics imports, sample-count-labeled exploratory learning hypotheses, manually registered content experiments, a per-idea workflow audit timeline, durable render attempt accounting with manual stale-attempt recovery, and local operations monitoring.
+AYE is planned as a human-approved, multi-channel content operations platform. The repository is progressing through **Phases 1–8**. It includes FastAPI, PostgreSQL migrations, channel CRUD, RSS discovery/source packs and manually authored source-linked claim dossiers, opportunity scoring, versioned human-authored scripts/storyboards, a PostgreSQL-backed FFmpeg production worker queue, worker liveness monitoring, technical QA, exact-version human approval, a persistent Approval Center, normalized CSV analytics imports, sample-count-labeled exploratory learning hypotheses, manually registered content experiments, a per-idea workflow audit timeline, durable render attempt accounting with manual stale-attempt recovery, and local operations monitoring.
 
 ## Run locally with Docker
 
@@ -31,6 +31,8 @@ API: install `backend/pyproject.toml` dependencies in a Python 3.11+ environment
 Dashboard: use Node.js 22+, run `npm install` and `npm run dev` from `frontend/`. Set `NEXT_PUBLIC_API_BASE_URL` if the API is not at `http://localhost:8000/api/v1`.
 
 Configure `AYE_RSS_FEED_URLS` as a comma-separated list of trusted HTTPS feeds before using Trend Radar. Discovery limits response size and rejects non-public feed hosts. The score is a transparent freshness/source-diversity heuristic; it does not estimate likely views.
+
+Trend Radar can save a manual evidence dossier with a claim, HTTPS citation, and human assessment. The citation is not fetched, and AYE does not independently verify the claim or source.
 
 Set `AYE_RSS_FEED_URLS` in root `.env` for Docker Compose, or in `backend/.env` when running the API directly. Opportunity scoring uses the blueprint's weights, but only the RSS score is automated; other factors are supplied as human estimates. Script and storyboard records are human-authored versions, not generated output.
 

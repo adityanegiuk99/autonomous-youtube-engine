@@ -18,7 +18,7 @@ Channel fields: `name` (required), `niche`, `language`, `target_country`, `descr
 
 ## Remaining resource groups
 
-Source packs preserve RSS metadata and URLs but do not verify factual claims. AI research synthesis, live YouTube publishing/analytics, and agent-run monitoring are not implemented. Human approval is available only for exact production versions with technical QA; publishing routes must additionally enforce channel ownership and OAuth authorization.
+Source packs preserve RSS metadata and URLs but do not verify factual claims. Manual evidence dossiers store a human-entered summary, claims, HTTPS citations, and explicit assessment notes; AYE does not fetch citations or independently verify any statement. AI research synthesis, live YouTube publishing/analytics, and agent-run monitoring are not implemented. Human approval is available only for exact production versions with technical QA; publishing routes must additionally enforce channel ownership and OAuth authorization.
 
 ## Opportunity and content endpoints
 
@@ -88,6 +88,9 @@ Local publishing schedules require a passing production QA result, an `approve` 
 | GET | `/trends?limit=50` | List stored trend candidates ordered by heuristic score |
 | POST | `/trends/discover` | Fetch configured HTTPS RSS feeds, deduplicate, and upsert items |
 | POST | `/research/trends/{id}/source-packs` | Snapshot synopsis provenance and article links as an unverified source pack |
-| GET | `/research/trends/{id}` | List saved source-pack versions |
+| POST | `/research/trends/{id}/dossiers` | Save a versioned manual evidence dossier with per-claim HTTPS citations and human assessment notes |
+| GET | `/research/trends/{id}` | List saved source-pack and manual dossier versions |
 
 Feeds are configured with comma-separated `AYE_RSS_FEED_URLS`. Discovery rejects non-HTTPS and non-public hosts, disables redirects, limits response size, and reports per-feed failures. The score is source diversity (up to 60) plus recency (up to 40); it is not an audience or view prediction.
+
+Manual dossiers accept 1–50 claims, each with 1–8 HTTPS citations. Non-unreviewed assessments require a human note and are labeled `human_entered`; the saved note states that citation URLs, excerpts, and claims have not been independently checked. Citation links are not fetched. These records improve traceability but are not fact-check results or proof of claim accuracy.
