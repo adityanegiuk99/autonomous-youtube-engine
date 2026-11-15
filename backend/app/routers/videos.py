@@ -70,6 +70,20 @@ def _media_manifest(assets: dict[UUID, MediaAsset]) -> list[dict]:
             for asset in assets.values()]
 
 
+def _remove_generated_files(media_root: Path, *storage_keys: str) -> bool:
+    cleaned = True
+    for storage_key in storage_keys:
+        path = media_root / storage_key
+        if path.parent.resolve() != media_root:
+            cleaned = False
+            continue
+        try:
+            path.unlink(missing_ok=True)
+        except OSError:
+            cleaned = False
+    return cleaned
+
+
 @router.post("/ideas/{idea_id}/render-preview", response_model=VideoRead, status_code=201)
 def render_preview(idea_id: UUID, storyboard_version_id: UUID = Query(...), db: Session = Depends(get_db)):
     idea = db.get(ContentIdea, idea_id)
@@ -79,11 +93,24 @@ def render_preview(idea_id: UUID, storyboard_version_id: UUID = Query(...), db: 
     if storyboard is None or storyboard.content_idea_id != idea_id:
         raise HTTPException(status_code=404, detail="Storyboard version not found for this idea")
     video_id = uuid4()
+    settings = get_settings()
+    media_dir = Path(settings.media_dir).resolve()
     try:
         storage_key, checksum, duration, width, height = render_silent_preview(
-            storyboard.scenes, video_id, Path(get_settings().media_dir), get_settings().ffmpeg_binary, idea.format
+            storyboard.scenes, video_id, media_dir, settings.ffmpeg_binary, idea.format
         )
-    except (RuntimeError, ValueError) as exc:
+    except (RuntimeError, ValueError, OSError) as exc:
+        cleanup_succeeded = _remove_generated_files(media_dir, f"{video_id}.mp4")
+        record_workflow_event(db, idea.id, idea.status, "preview_failed",
+                              "Silent preview failed; review storyboard content and FFmpeg configuration",
+                              {"failure_class": "input_validation" if isinstance(exc, ValueError) else "render_tool_or_storage",
+                               "partial_output_cleanup_succeeded": cleanup_succeeded},
+                              previous_state=idea.status, actor="system")
+        try:
+            db.commit()
+        except Exception:
+            db.rollback()
+            raise
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     video = RenderedVideo(id=video_id, content_idea_id=idea_id, storyboard_version_id=storyboard_version_id,
                           storage_key=storage_key, checksum=checksum, duration_seconds=duration,
@@ -172,7 +199,20 @@ def render_final_video(idea_id: UUID, response: Response, storyboard_version_id:
     try:
         result = render_production(storyboard.scenes, assets, video_id, media_dir,
                                    settings.ffmpeg_binary, settings.ffprobe_binary, idea.format)
-    except (RuntimeError, ValueError) as exc:
+    except (RuntimeError, ValueError, OSError) as exc:
+        cleanup_succeeded = _remove_generated_files(media_dir, f"{video_id}.mp4", f"{video_id}-thumb.jpg")
+        previous_state = idea.status
+        idea.status = "PRODUCTION_FAILED"
+        record_workflow_event(db, idea.id, idea.status, "production_failed",
+                              "Production render failed; correct the source assets or rendering configuration before retrying",
+                              {"failure_class": "input_validation" if isinstance(exc, ValueError) else "render_tool_or_storage",
+                               "partial_output_cleanup_succeeded": cleanup_succeeded},
+                              previous_state=previous_state, actor="system")
+        try:
+            db.commit()
+        except Exception:
+            db.rollback()
+            raise
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     content_hash = production_content_hash(idea, script, storyboard, result["media_manifest"], result["checksum"])
     video = RenderedVideo(id=video_id, content_idea_id=idea_id, storyboard_version_id=storyboard_version_id,
