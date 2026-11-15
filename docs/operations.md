@@ -47,3 +47,7 @@ After restore, check `http://localhost:8000/api/v1/health`, connect to the dashb
 ## Schema changes and recovery limits
 
 The API container applies Alembic migrations at startup. Before updating an installation, create a paired database/media snapshot and keep the previous application image available until the updated stack is confirmed. This repository does not yet automate off-machine backups, retention, encryption, scheduled restore drills, monitoring, or disaster recovery. Local Docker volumes are not a backup until copied off the host and restore-checked.
+
+## Inspect local media integrity
+
+The Operations page offers a read-only media audit at `GET /api/v1/operations/media-integrity`. It checks that database-referenced source assets, rendered videos, and thumbnails exist under the configured media directory; it compares source and render checksums where the database stores one. It also lists up to 100 unreferenced files. The audit does not delete or repair anything. Review orphan entries before manual cleanup, since interrupted operations may leave files that still matter to an operator. Run it after a restore or storage move, then open important renders in the Approval Center.

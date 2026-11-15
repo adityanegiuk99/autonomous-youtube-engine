@@ -46,6 +46,7 @@ Source packs preserve RSS metadata and URLs but do not verify factual claims. AI
 | GET | `/analytics/channels/{channel_id}` | Summarize the latest imported row for each video |
 | GET | `/analytics/channels/{channel_id}/insights` | Return exploratory metric comparisons for channel learning |
 | GET | `/operations/render-usage?days=30` | Summarize local production render duration, bytes, and outcomes for 1–365 days |
+| GET | `/operations/media-integrity` | Check local referenced media files and report mismatches, missing files, unsafe references, and up to 100 orphans |
 | GET | `/dashboard/summary` | Return persisted channel, trend, idea, and render summary counts with recent items |
 
 The opportunity score uses the blueprint's weighted formula. The RSS heuristic is used as the trend-velocity input, and engagement, audience relevance, originality, and research quality are user estimates. Script and storyboard endpoints save human input; they do not claim AI generation.
@@ -59,6 +60,8 @@ Workflow events are appended in the same transaction as idea creation, script/st
 Production render requests for the same idea/storyboard are serialized by a PostgreSQL transaction-scoped advisory lock. After acquiring the lock, a replay reuses an intact, passing render for the same storyboard and media inputs when it has no final decision, returning HTTP 200. If that exact render already has an approval decision, another request returns 409 so a new video row cannot silently create a second decision for the same render. Missing or changed files are never reused. This lock coordinates concurrent API requests but is not a durable job queue; automatic retry scheduling, crash recovery, and resumable checkpoints remain future work.
 
 The operations usage endpoint reports measured production render wall time, source-media bytes, output bytes, and technical outcomes from workflow events. Historical events without measurement fields are counted as unmeasured. It does not estimate electricity, rupee cost, cloud usage, LLM usage, or YouTube API charges.
+
+The read-only media integrity endpoint hashes source assets and rendered videos where checksums are recorded, verifies that referenced files remain inside the configured media directory, and checks thumbnails for presence. It does not delete or repair files.
 
 ## Trend intelligence
 

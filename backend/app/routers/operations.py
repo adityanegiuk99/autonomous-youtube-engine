@@ -1,13 +1,18 @@
 import math
+import hashlib
 from datetime import datetime, timedelta
+from pathlib import Path
+from typing import Literal
+from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.config import get_settings
 from app.database import get_db
-from app.models import WorkflowEvent, utc_now
+from app.models import MediaAsset, RenderedVideo, WorkflowEvent, utc_now
 from app.security import require_api_token
 
 router = APIRouter(prefix="/operations", tags=["operations"], dependencies=[Depends(require_api_token)])
@@ -28,6 +33,22 @@ class RenderUsageSummary(BaseModel):
     source_media_bytes: int
     rendered_video_bytes: int
     monetary_cost_available: bool = False
+    note: str
+
+
+class MediaIntegrityIssue(BaseModel):
+    category: Literal["missing", "checksum_mismatch", "unsafe_path", "unreadable", "orphan"]
+    record_type: Literal["media_asset", "video", "thumbnail", "file"]
+    record_id: UUID | None = None
+    storage_key: str
+
+
+class MediaIntegrityReport(BaseModel):
+    checked_at: datetime
+    storage_root_available: bool
+    referenced_files_checked: int
+    issues: list[MediaIntegrityIssue]
+    orphan_files_truncated: bool
     note: str
 
 
@@ -86,4 +107,72 @@ def render_usage(days: int = Query(default=30, ge=1, le=365), db: Session = Depe
         render_seconds_average=round(total_seconds / measured_attempts, 3) if measured_attempts else None,
         source_media_bytes=source_bytes, rendered_video_bytes=video_bytes,
         note="Shows local render time and media volume from recorded events. No provider/API spend or rupee cost is configured, so financial cost is unavailable.",
+    )
+
+
+def _sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as stream:
+        for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+@router.get("/media-integrity", response_model=MediaIntegrityReport)
+def media_integrity(db: Session = Depends(get_db)):
+    """Read-only audit of database-referenced files against local media storage."""
+    root = Path(get_settings().media_dir).resolve()
+    issues: list[MediaIntegrityIssue] = []
+    referenced_keys: set[str] = set()
+    checked = 0
+
+    def inspect(storage_key: str, record_type: Literal["media_asset", "video", "thumbnail"],
+                record_id: UUID | None, checksum: str | None = None) -> None:
+        nonlocal checked
+        referenced_keys.add(storage_key)
+        path = (root / storage_key).resolve()
+        if path.parent != root:
+            issues.append(MediaIntegrityIssue(category="unsafe_path", record_type=record_type,
+                                              record_id=record_id, storage_key=storage_key))
+            return
+        if not path.is_file():
+            issues.append(MediaIntegrityIssue(category="missing", record_type=record_type,
+                                              record_id=record_id, storage_key=storage_key))
+            return
+        checked += 1
+        if checksum is not None:
+            try:
+                matches = _sha256(path) == checksum
+            except OSError:
+                issues.append(MediaIntegrityIssue(category="unreadable", record_type=record_type,
+                                                  record_id=record_id, storage_key=storage_key))
+                return
+            if not matches:
+                issues.append(MediaIntegrityIssue(category="checksum_mismatch", record_type=record_type,
+                                                  record_id=record_id, storage_key=storage_key))
+
+    for asset in db.scalars(select(MediaAsset)).all():
+        inspect(asset.storage_key, "media_asset", asset.id, asset.checksum)
+    for video in db.scalars(select(RenderedVideo)).all():
+        inspect(video.storage_key, "video", video.id, video.checksum)
+        if video.thumbnail_key:
+            inspect(video.thumbnail_key, "thumbnail", video.id)
+
+    orphan_files: list[str] = []
+    orphan_count = 0
+    if root.is_dir():
+        for path in root.iterdir():
+            if path.is_file() and path.name not in referenced_keys:
+                orphan_count += 1
+                if orphan_count <= 100:
+                    orphan_files.append(path.name)
+    truncated = orphan_count > 100
+    issues.extend(MediaIntegrityIssue(category="orphan", record_type="file", storage_key=key)
+                  for key in orphan_files)
+
+    return MediaIntegrityReport(
+        checked_at=utc_now(), storage_root_available=root.is_dir(),
+        referenced_files_checked=checked, issues=issues,
+        orphan_files_truncated=truncated,
+        note="Read-only local filesystem check. A clean report does not replace paired database and media backups.",
     )

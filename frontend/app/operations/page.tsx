@@ -10,6 +10,8 @@ type Usage = {
   technical_qa_passes: number; technical_qa_failures: number; render_failures: number; render_seconds_total: number;
   render_seconds_average: number | null; source_media_bytes: number; rendered_video_bytes: number; monetary_cost_available: boolean; note: string;
 };
+type IntegrityIssue = { category: string; record_type: string; record_id: string | null; storage_key: string };
+type IntegrityReport = { checked_at: string; storage_root_available: boolean; referenced_files_checked: number; issues: IntegrityIssue[]; orphan_files_truncated: boolean; note: string };
 const api = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000/api/v1";
 const integer = (value: number) => new Intl.NumberFormat().format(value);
 const bytes = (value: number) => value < 1024 * 1024 ? `${(value / 1024).toFixed(1)} KB` : `${(value / (1024 * 1024)).toFixed(2)} MB`;
@@ -20,6 +22,21 @@ export default function OperationsPage() {
   const [usage, setUsage] = useState<Usage | null>(null);
   const [busy, setBusy] = useState(true);
   const [error, setError] = useState("");
+  const [integrity, setIntegrity] = useState<IntegrityReport | null>(null);
+  const [integrityBusy, setIntegrityBusy] = useState(false);
+  const [integrityError, setIntegrityError] = useState("");
+
+  async function auditMedia() {
+    setIntegrityBusy(true); setIntegrityError("");
+    try {
+      const response = await apiFetch(`${api}/operations/media-integrity`);
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.detail ?? "Could not audit media storage");
+      setIntegrity(data);
+    } catch (reason) {
+      setIntegrityError(reason instanceof Error ? reason.message : "Could not audit media storage");
+    } finally { setIntegrityBusy(false); }
+  }
 
   useEffect(() => {
     let cancelled = false;
@@ -46,6 +63,19 @@ export default function OperationsPage() {
       <article className="analytics-note"><strong>Measurement coverage</strong><p>{integer(usage.measured_attempts)} of {integer(usage.attempts)} production attempts include resource measurements. Older workflow events may predate this instrumentation.</p><small>Window: {new Date(usage.starts_at).toLocaleString()} to {new Date(usage.ends_at).toLocaleString()}</small></article>
       <p className="trend-method">{usage.note}</p>
     </>}
+    <section className="media-integrity">
+      <div className="section-heading"><div><h3>Media storage integrity</h3><p className="muted">Compare referenced local files with their recorded checksums and find unreferenced files.</p></div><button className="secondary" onClick={auditMedia} disabled={integrityBusy}>{integrityBusy ? "Checking files…" : "Run read-only audit"}</button></div>
+      {integrityError && <p className="error-message">{integrityError}</p>}
+      {integrity && <>
+        <article className={integrity.issues.length || !integrity.storage_root_available ? "operations-note" : "integrity-clean"}>
+          <strong>{!integrity.storage_root_available ? "Media storage directory is unavailable" : integrity.issues.length ? `${integer(integrity.issues.length)} issue${integrity.issues.length === 1 ? "" : "s"} found` : "No storage issues found"}</strong>
+          <p>Checked {integer(integrity.referenced_files_checked)} referenced files at {new Date(integrity.checked_at).toLocaleString()}.</p>
+          {integrity.orphan_files_truncated && <p>Only the first 100 unreferenced files are listed.</p>}
+        </article>
+        {integrity.issues.length > 0 && <div className="integrity-issues">{integrity.issues.map((issue, index) => <div key={`${issue.category}-${issue.storage_key}-${index}`}><strong>{issue.category.replaceAll("_", " ")}</strong><span>{issue.record_type}{issue.record_id ? ` · ${issue.record_id}` : ""}</span><code>{issue.storage_key}</code></div>)}</div>}
+        <p className="trend-method">{integrity.note}</p>
+      </>}
+    </section>
     {!busy && usage?.attempts === 0 && <article className="empty-card channel-empty"><div className="empty-icon">◷</div><h3>No production attempts in this window</h3><p>Render usage will appear here after a production attempt completes.</p><a className="secondary" href="/studio">Open Video Studio</a></article>}
   </main>;
 }
