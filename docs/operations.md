@@ -4,7 +4,7 @@ This runbook covers the current Docker Compose development stack. It is not a pr
 
 ## What must be backed up together
 
-- PostgreSQL contains channel, idea, version, render, approval, and analytics records.
+- PostgreSQL contains channel, idea, version, render, approval, analytics, and workflow/operations event records.
 - The `aye_media` Docker volume contains uploaded source assets and rendered videos/thumbnails. Database rows refer to files in this volume.
 - Keep the database dump and media archive from the same maintenance window. Restoring only one can leave missing files or orphaned files.
 - Keep the `.env` API token and trusted feed configuration in a separate secrets store. Do not put `.env` in the backup archive or Git.

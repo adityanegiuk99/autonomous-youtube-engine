@@ -1,4 +1,5 @@
 import hashlib
+import time
 from datetime import datetime
 from pathlib import Path
 from uuid import UUID, uuid4
@@ -68,6 +69,16 @@ def _media_manifest(assets: dict[UUID, MediaAsset]) -> list[dict]:
              "license_type": asset.license_type, "source_url": asset.source_url,
              "checksum": asset.checksum, "rights_confirmed": asset.rights_confirmed}
             for asset in assets.values()]
+
+
+def _source_media_bytes(media_root: Path, assets: dict[UUID, MediaAsset]) -> int:
+    sizes = []
+    for asset in assets.values():
+        path = (media_root / asset.storage_key).resolve()
+        if path.parent != media_root or not path.is_file():
+            raise ValueError("A referenced media file is missing or outside media storage")
+        sizes.append(path.stat().st_size)
+    return sum(sizes)
 
 
 def _remove_generated_files(media_root: Path, *storage_keys: str) -> bool:
@@ -209,10 +220,18 @@ def render_final_video(idea_id: UUID, response: Response, storyboard_version_id:
     attempt_number = completed_attempts + 1
 
     video_id = uuid4()
+    render_started = time.perf_counter()
+    source_bytes: int | None = None
     try:
+        source_bytes = _source_media_bytes(media_dir, assets)
         result = render_production(storyboard.scenes, assets, video_id, media_dir,
                                    settings.ffmpeg_binary, settings.ffprobe_binary, idea.format)
+        output_path = (media_dir / result["storage_key"]).resolve()
+        if output_path.parent != media_dir or not output_path.is_file():
+            raise ValueError("Rendered output is missing or outside media storage")
+        output_bytes = output_path.stat().st_size
     except (RuntimeError, ValueError, OSError) as exc:
+        render_duration_seconds = round(time.perf_counter() - render_started, 3)
         cleanup_succeeded = _remove_generated_files(media_dir, f"{video_id}.mp4", f"{video_id}-thumb.jpg")
         previous_state = idea.status
         idea.status = "PRODUCTION_FAILED"
@@ -221,6 +240,8 @@ def render_final_video(idea_id: UUID, response: Response, storyboard_version_id:
                               {"failure_class": "input_validation" if isinstance(exc, ValueError) else "render_tool_or_storage",
                                "storyboard_version_id": str(storyboard_version_id),
                                "attempt_number": attempt_number,
+                               "render_duration_seconds": render_duration_seconds,
+                               "source_bytes": source_bytes,
                                "partial_output_cleanup_succeeded": cleanup_succeeded},
                               previous_state=previous_state, actor="system")
         try:
@@ -229,6 +250,7 @@ def render_final_video(idea_id: UUID, response: Response, storyboard_version_id:
             db.rollback()
             raise
         raise HTTPException(status_code=503, detail=str(exc)) from exc
+    render_duration_seconds = round(time.perf_counter() - render_started, 3)
     content_hash = production_content_hash(idea, script, storyboard, result["media_manifest"], result["checksum"])
     video = RenderedVideo(id=video_id, content_idea_id=idea_id, storyboard_version_id=storyboard_version_id,
                           storage_key=result["storage_key"], checksum=result["checksum"],
@@ -245,7 +267,10 @@ def render_final_video(idea_id: UUID, response: Response, storyboard_version_id:
                           {"video_id": str(video.id), "content_hash": content_hash,
                            "technical_qa_status": video.qa_report.get("status"),
                            "storyboard_version_id": str(storyboard_version_id),
-                           "attempt_number": attempt_number},
+                           "attempt_number": attempt_number,
+                           "render_duration_seconds": render_duration_seconds,
+                           "source_bytes": source_bytes,
+                           "output_bytes": output_bytes},
                           previous_state=previous_state)
     try:
         db.commit()

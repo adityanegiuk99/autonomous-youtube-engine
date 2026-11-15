@@ -45,6 +45,8 @@ Source packs preserve RSS metadata and URLs but do not verify factual claims. AI
 | POST | `/analytics/import?channel_id=` | Import cumulative CSV snapshots for a configured channel |
 | GET | `/analytics/channels/{channel_id}` | Summarize the latest imported row for each video |
 | GET | `/analytics/channels/{channel_id}/insights` | Return exploratory metric comparisons for channel learning |
+| GET | `/operations/render-usage?days=30` | Summarize local production render duration, bytes, and outcomes for 1–365 days |
+| GET | `/dashboard/summary` | Return persisted channel, trend, idea, and render summary counts with recent items |
 
 The opportunity score uses the blueprint's weighted formula. The RSS heuristic is used as the trend-velocity input, and engagement, audience relevance, originality, and research quality are user estimates. Script and storyboard endpoints save human input; they do not claim AI generation.
 
@@ -54,7 +56,9 @@ Analytics CSV imports require the exact header from `/analytics/csv-template`. C
 
 Workflow events are appended in the same transaction as idea creation, script/storyboard saves, render successes/failures, and human approval decisions. They retain previous/current state, actor label, event type, a sanitized reason, and safe structured metadata. Failed render attempts clean partial output files and can be retried; production failure moves the idea to `PRODUCTION_FAILED`, and a successful later render advances it to technical QA status. `AYE_MAX_PRODUCTION_ATTEMPTS` bounds completed attempts per storyboard (default 3, allowed 1–10); after the limit, revise and save a new storyboard version to continue. Existing ideas are not backfilled; their response falls back to the current idea status until new events are recorded. This is an audit timeline, not a resumable job queue; automatic retries and workflow checkpoints remain unimplemented.
 
-Production render requests for the same idea/storyboard are serialized by a PostgreSQL transaction-scoped advisory lock. After acquiring the lock, a replay reuses an intact, passing render for the same storyboard and media inputs when it has no final decision, returning HTTP 200. If that exact render already has an approval decision, another request returns 409 so a new video row cannot silently create a second decision for the same render. Missing or changed files are never reused. This lock coordinates concurrent API requests but is not a durable job queue; crash recovery, bounded retries, and resumable checkpoints remain future work.
+Production render requests for the same idea/storyboard are serialized by a PostgreSQL transaction-scoped advisory lock. After acquiring the lock, a replay reuses an intact, passing render for the same storyboard and media inputs when it has no final decision, returning HTTP 200. If that exact render already has an approval decision, another request returns 409 so a new video row cannot silently create a second decision for the same render. Missing or changed files are never reused. This lock coordinates concurrent API requests but is not a durable job queue; automatic retry scheduling, crash recovery, and resumable checkpoints remain future work.
+
+The operations usage endpoint reports measured production render wall time, source-media bytes, output bytes, and technical outcomes from workflow events. Historical events without measurement fields are counted as unmeasured. It does not estimate electricity, rupee cost, cloud usage, LLM usage, or YouTube API charges.
 
 ## Trend intelligence
 

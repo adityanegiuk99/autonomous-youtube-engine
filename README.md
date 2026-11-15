@@ -1,6 +1,6 @@
 # Autonomous YouTube Engine (AYE)
 
-AYE is planned as a human-approved, multi-channel content operations platform. The repository is progressing through **Phases 1–8**. It includes FastAPI, PostgreSQL migrations, channel CRUD, RSS discovery/source packs, opportunity scoring, versioned human-authored scripts/storyboards, media-backed FFmpeg rendering, technical QA, exact-version human approval, a persistent Approval Center, normalized CSV analytics imports, sample-count-labeled exploratory learning hypotheses, and a per-idea workflow audit timeline.
+AYE is planned as a human-approved, multi-channel content operations platform. The repository is progressing through **Phases 1–8**. It includes FastAPI, PostgreSQL migrations, channel CRUD, RSS discovery/source packs, opportunity scoring, versioned human-authored scripts/storyboards, media-backed FFmpeg rendering, technical QA, exact-version human approval, a persistent Approval Center, normalized CSV analytics imports, sample-count-labeled exploratory learning hypotheses, a per-idea workflow audit timeline, and local render resource monitoring.
 
 ## Run locally with Docker
 
@@ -17,8 +17,11 @@ docker compose up --build
 - Trend Radar: <http://localhost:3000/trends>
 - Content pipeline: <http://localhost:3000/ideas>
 - Approval Center: <http://localhost:3000/approvals>
+- Operations and Cost Monitor: <http://localhost:3000/operations>
 
 The dashboard prompts for the token and keeps it in browser session storage. The Compose database credentials are for local development only. The bearer token is single-owner local access control, not production authentication or multi-user authorization; do not expose this stack publicly.
+
+The overview dashboard reads persisted channel, trend, idea, and render counts from the API. Configured channel records are not YouTube connections, and QA-passed renders without a recorded decision may be stale if newer content versions exist.
 
 ## Run services separately
 
@@ -32,7 +35,7 @@ Set `AYE_RSS_FEED_URLS` in root `.env` for Docker Compose, or in `backend/.env` 
 
 The animatic endpoint creates silent text cards. Production rendering uses rights-attested user-uploaded images and voice audio, adds scene-level subtitle overlays and a thumbnail, and performs technical container QA. The approval endpoint binds a human decision to the rendered and source hashes and requires review confirmations. It does not independently verify content claims or license terms and is not YouTube publish authorization.
 
-The Analytics page accepts normalized cumulative CSV snapshots and summarizes the latest row per video. With at least 10 videos, it compares CTR and average view duration across the highest and lowest view quartiles to suggest editorial review hypotheses. These comparisons are exploratory, not adjusted for age/format/topic/promotion, and do not establish causality. The page is not connected to YouTube Analytics.
+The Analytics page accepts normalized cumulative CSV snapshots and summarizes the latest row per video. With at least 10 videos, it compares CTR and average view duration across the highest and lowest view quartiles to suggest editorial review hypotheses. These comparisons are exploratory, not adjusted for age/format/topic/promotion, and do not establish causality. The page is not connected to YouTube Analytics. The Operations page measures local production render time and media bytes; it has no financial cost, cloud, or provider usage data.
 
 ## Current limits
 
