@@ -17,6 +17,7 @@ This is the conceptual model, not a claim that every table is implemented. Postg
 | MediaAsset | storage key, type, checksum, user-attested rights, source URL, original filename |
 | Video | idea, storyboard version, render asset, thumbnail, media manifest, technical QA report, content hash |
 | Approval | video, exact content hash, reviewer, decision, notes, timestamp |
+| WorkflowEvent | content idea, previous/current state, event type, actor, reason, safe metadata, timestamp |
 | PublishJob | video, approval, channel, visibility/schedule, idempotency key, provider ID, status |
 | AnalyticsSnapshot | configured channel, external video ID, metrics, CSV import batch, collection time |
 | AgentRun | workflow subject, agent/type, status, attempt, bounded logs, timestamps |
@@ -35,4 +36,4 @@ This is the conceptual model, not a claim that every table is implemented. Postg
 
 ## Foundation implementation
 
-Implemented migrations currently cover channel configuration, trend items, opportunity ideas, human-authored script/storyboard versions, silent previews, RSS source packs, uploaded media assets, technical QA metadata, content-hash-bound human approvals, and imported analytics snapshots. User identity, OAuth connections, verified research claims, publishing jobs, and live analytics integrations remain future migrations. The initial API must not expose fields that imply an external account has been connected or verified.
+Implemented migrations currently cover channel configuration, trend items, opportunity ideas, human-authored script/storyboard versions, silent previews, RSS source packs, uploaded media assets, technical QA metadata, content-hash-bound human approvals, imported analytics snapshots, and append-only workflow event history. User identity, OAuth connections, verified research claims, publishing jobs, and live analytics integrations remain future migrations. The initial API must not expose fields that imply an external account has been connected or verified.

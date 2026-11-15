@@ -15,6 +15,7 @@ from app.models import ContentIdea, MediaAsset, RenderedVideo, ScriptVersion, St
 from app.production.preview import render_silent_preview
 from app.production.render import render_production
 from app.security import require_api_token
+from app.workflows import record_workflow_event
 
 router = APIRouter(tags=["videos"], dependencies=[Depends(require_api_token)])
 
@@ -56,6 +57,8 @@ def render_preview(idea_id: UUID, storyboard_version_id: UUID = Query(...), db: 
                           storage_key=storage_key, checksum=checksum, duration_seconds=duration,
                           width=width, height=height, status="PREVIEW_RENDERED", created_at=utc_now())
     db.add(video)
+    record_workflow_event(db, idea.id, idea.status, "preview_rendered", "Silent animatic preview rendered",
+                          {"video_id": str(video_id), "checksum": checksum}, previous_state=idea.status)
     db.commit()
     db.refresh(video)
     result = VideoRead.model_validate(video)
@@ -107,7 +110,13 @@ def render_final_video(idea_id: UUID, storyboard_version_id: UUID = Query(...), 
                           thumbnail_key=result["thumbnail_key"], media_manifest=result["media_manifest"],
                           qa_report=result["qa_report"], created_at=utc_now())
     db.add(video)
+    previous_state = idea.status
     idea.status = video.status
+    record_workflow_event(db, idea.id, idea.status, "production_rendered",
+                          "Production render completed with technical QA",
+                          {"video_id": str(video.id), "content_hash": content_hash,
+                           "technical_qa_status": video.qa_report.get("status")},
+                          previous_state=previous_state)
     try:
         db.commit()
         db.refresh(video)

@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.models import Channel, ContentIdea, TrendItem, utc_now
 from app.security import require_api_token
+from app.workflows import record_workflow_event
 
 router = APIRouter(prefix="/ideas", tags=["ideas"], dependencies=[Depends(require_api_token)])
 
@@ -72,6 +73,10 @@ def create_idea(payload: IdeaCreate, db: Session = Depends(get_db)):
                                                           payload.research_quality),
                        status="DISCOVERED", created_at=utc_now())
     db.add(idea)
+    db.flush()
+    record_workflow_event(db, idea.id, "DISCOVERED", "idea_created",
+                          "Opportunity created from user-supplied editorial estimates",
+                          {"opportunity_score": idea.opportunity_score})
     db.commit()
     db.refresh(idea)
     return idea

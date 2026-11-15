@@ -41,6 +41,7 @@ The foundation uses a single shared bearer token configured by the local operato
 - A rendered video references an exact storyboard/script version and its media assets.
 - Approval references a video and immutable content hash; publishing jobs reference that approval.
 - Analytics snapshots reference a channel and optionally a published video.
+- Workflow events append the state, action, actor label, reason, and safe metadata for idea creation, content version saves, renders, and human approval decisions.
 - Agent runs and workflow checkpoints reference the workflow subject and record state, attempts, and timestamps.
 
 See [data-model.md](data-model.md) for the initial entity contract.
@@ -53,6 +54,7 @@ See [data-model.md](data-model.md) for the initial entity contract.
 - Provider calls have timeouts, bounded retries, and idempotency keys where the provider supports them.
 - Redis/Celery and LangGraph are introduced when an actual asynchronous workflow exists, not as empty dependencies in the foundation.
 - Database migrations are required before schema changes are deployed.
+- Current workflow history is an audit timeline only; it does not imply background execution, retry safety, or resumable checkpoints.
 
 ## Open decisions
 

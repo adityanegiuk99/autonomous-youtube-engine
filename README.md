@@ -1,6 +1,6 @@
 # Autonomous YouTube Engine (AYE)
 
-AYE is planned as a human-approved, multi-channel content operations platform. The repository is progressing through **Phases 1–8**. It includes FastAPI, PostgreSQL migrations, channel CRUD, RSS discovery/source packs, opportunity scoring, versioned human-authored scripts/storyboards, media-backed FFmpeg rendering, technical QA, exact-version human approval, a persistent Approval Center, normalized CSV analytics imports, and sample-count-labeled exploratory learning hypotheses.
+AYE is planned as a human-approved, multi-channel content operations platform. The repository is progressing through **Phases 1–8**. It includes FastAPI, PostgreSQL migrations, channel CRUD, RSS discovery/source packs, opportunity scoring, versioned human-authored scripts/storyboards, media-backed FFmpeg rendering, technical QA, exact-version human approval, a persistent Approval Center, normalized CSV analytics imports, sample-count-labeled exploratory learning hypotheses, and a per-idea workflow audit timeline.
 
 ## Run locally with Docker
 

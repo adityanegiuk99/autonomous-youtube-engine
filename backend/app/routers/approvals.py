@@ -14,6 +14,7 @@ from app.content_hashing import production_content_hash
 from app.database import get_db
 from app.models import Approval, ContentIdea, MediaAsset, RenderedVideo, ScriptVersion, StoryboardVersion, utc_now
 from app.security import require_api_token
+from app.workflows import record_workflow_event
 
 router = APIRouter(prefix="/videos", tags=["approvals"], dependencies=[Depends(require_api_token)])
 
@@ -125,8 +126,13 @@ def create_approval(video_id: UUID, payload: ApprovalCreate, reviewer: str = Dep
                         decision=payload.decision, review_checks=payload.review_checks.model_dump(),
                         notes=payload.notes, created_at=utc_now())
     db.add(approval)
+    previous_state = idea.status
     video.status = {"approve": "APPROVED", "reject": "REJECTED", "request_changes": "CHANGES_REQUESTED"}[payload.decision]
     idea.status = video.status
+    record_workflow_event(db, idea.id, idea.status, "approval_decision",
+                          f"Human reviewer recorded {payload.decision}",
+                          {"video_id": str(video.id), "content_hash": current_hash,
+                           "decision": payload.decision}, previous_state=previous_state)
     db.commit()
     db.refresh(approval)
     return approval

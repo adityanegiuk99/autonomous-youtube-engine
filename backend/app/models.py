@@ -161,3 +161,17 @@ class AnalyticsSnapshot(Base):
     source: Mapped[str] = mapped_column(String(32), nullable=False, default="user_csv")
     import_id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utc_now)
+
+
+class WorkflowEvent(Base):
+    __tablename__ = "workflow_events"
+
+    id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True, default=uuid4)
+    content_idea_id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), ForeignKey("content_ideas.id", ondelete="CASCADE"), nullable=False, index=True)
+    previous_state: Mapped[str | None] = mapped_column(String(32))
+    state: Mapped[str] = mapped_column(String(32), nullable=False)
+    event_type: Mapped[str] = mapped_column(String(48), nullable=False)
+    actor: Mapped[str] = mapped_column(String(120), nullable=False)
+    reason: Mapped[str] = mapped_column(String(500), nullable=False)
+    metadata_json: Mapped[dict] = mapped_column("metadata", JSON, nullable=False, default=dict)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utc_now)

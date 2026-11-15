@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.models import ContentIdea, MediaAsset, ScriptVersion, StoryboardVersion, utc_now
 from app.security import require_api_token
+from app.workflows import record_workflow_event
 
 router = APIRouter(prefix="/ideas", tags=["content"], dependencies=[Depends(require_api_token)])
 
@@ -76,7 +77,12 @@ def create_script(idea_id: UUID, payload: ScriptCreate, db: Session = Depends(ge
     script = ScriptVersion(content_idea_id=idea_id, version=version, body=payload.body,
                            content_hash=content_hash, origin=payload.origin, created_at=utc_now())
     db.add(script)
+    db.flush()
+    previous_state = idea.status
     idea.status = "SCRIPT_READY"
+    record_workflow_event(db, idea.id, idea.status, "script_saved", "Human-authored script version saved",
+                          {"script_version_id": str(script.id), "version": version,
+                           "content_hash": content_hash}, previous_state=previous_state)
     db.commit()
     db.refresh(script)
     return script
@@ -116,7 +122,13 @@ def create_storyboard(idea_id: UUID, payload: StoryboardCreate, db: Session = De
                                    scenes=scenes, content_hash=hashlib.sha256(serialized.encode("utf-8")).hexdigest(),
                                    created_at=utc_now())
     db.add(storyboard)
+    db.flush()
+    previous_state = idea.status
     idea.status = "STORYBOARD_READY"
+    record_workflow_event(db, idea.id, idea.status, "storyboard_saved", "Storyboard version saved",
+                          {"storyboard_version_id": str(storyboard.id), "version": version,
+                           "script_version_id": str(script.id), "content_hash": storyboard.content_hash},
+                          previous_state=previous_state)
     db.commit()
     db.refresh(storyboard)
     return storyboard

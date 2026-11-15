@@ -18,7 +18,7 @@ Agents are bounded capabilities invoked by application workflows. They receive t
 
 ## Workflow state and recovery
 
-The workflow owns state transitions: `DISCOVERED → RESEARCHING → RESEARCHED → SCRIPTING → SCRIPT_READY → STORYBOARD_READY → PRODUCING → RENDERED → QA_PASSED → PENDING_APPROVAL → APPROVED → QUEUED → UPLOADING → UPLOADED → PUBLISHED → ANALYZING → COMPLETED`. Failure and revision states are explicit. Each transition records actor/system, time, and reason. Retries are bounded and safe to replay; checkpoint schema changes are versioned.
+The target workflow owns state transitions: `DISCOVERED → RESEARCHING → RESEARCHED → SCRIPTING → SCRIPT_READY → STORYBOARD_READY → PRODUCING → RENDERED → QA_PASSED → PENDING_APPROVAL → APPROVED → QUEUED → UPLOADING → UPLOADED → PUBLISHED → ANALYZING → COMPLETED`. Failure and revision states are explicit. The current vertical slice appends idea creation, script/storyboard saves, renders, and human decisions to `WorkflowEvent` in the same database transaction and exposes a per-idea timeline. Older records are not backfilled. Provider-backed research, queue/publish stages, explicit transition validation, bounded retries, and versioned resumable checkpoints are still pending.
 
 Human approval is an interrupt tied to the exact content hash. Changes to script, storyboard, media, or material metadata invalidate the approval. The publishing capability accepts no free-form approval claim; it loads and validates the persisted decision itself. Upload is private by default and may proceed only after QA and authorization checks.
 
