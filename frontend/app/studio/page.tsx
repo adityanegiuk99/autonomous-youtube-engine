@@ -4,7 +4,8 @@ import { FormEvent, useCallback, useEffect, useState } from "react";
 import "../channels.css";
 import { apiFetch } from "../lib/api";
 
-type Idea = { id: string; title: string; format: string; status: string; trend_item_id: string | null };
+type Idea = { id: string; channel_id: string; title: string; format: string; status: string; trend_item_id: string | null };
+type ChannelProfile = { name: string; niche: string | null; audience_profile: string | null; brand_voice: string | null; visual_guidelines: string | null; content_pillars: string[]; preferred_formats: string[]; publishing_frequency_per_week: number | null };
 type Script = { id: string; version: number; body: string; content_hash: string; source_references?: ResearchSnapshot[] };
 type ResearchDossier = { id: string; version: number; document_type: string; content: { topic: string; claims?: { statement: string; assessment: string; references: { source_url: string; source_title: string }[] }[] } };
 type ResearchSnapshot = { research_document_id: string; version: number; content_hash: string; content: { topic: string; claims?: { statement: string; assessment: string; references: { source_url: string; source_title: string }[] }[] } };
@@ -20,6 +21,7 @@ const blankScene = (): SceneInput => ({ duration_seconds: "5", voiceover: "", vi
 export default function StudioPage() {
   const [ideas, setIdeas] = useState<Idea[]>([]);
   const [ideaId, setIdeaId] = useState("");
+  const [channelProfile, setChannelProfile] = useState<ChannelProfile | null>(null);
   const [scripts, setScripts] = useState<Script[]>([]);
   const [scriptId, setScriptId] = useState("");
   const [scriptBody, setScriptBody] = useState("");
@@ -66,6 +68,17 @@ export default function StudioPage() {
     } catch (e) { setError(e instanceof Error ? e.message : "Could not load versions"); }
   }
   useEffect(() => { void loadVersions(ideaId); }, [ideaId]);
+  useEffect(() => {
+    const channelId = ideas.find(item => item.id === ideaId)?.channel_id;
+    if (!channelId) { setChannelProfile(null); return; }
+    let cancelled = false;
+    void apiFetch(`${api}/channels/${channelId}`).then(async response => {
+      if (!response.ok) throw new Error("Could not load channel editorial profile");
+      const profile = await response.json() as ChannelProfile;
+      if (!cancelled) setChannelProfile(profile);
+    }).catch(reason => { if (!cancelled) setError(reason instanceof Error ? reason.message : "Could not load channel editorial profile"); });
+    return () => { cancelled = true; };
+  }, [ideaId, ideas]);
   useEffect(() => {
     const trendId = ideas.find(item => item.id === ideaId)?.trend_item_id;
     if (!trendId) { setResearchDossiers([]); return; }
@@ -215,6 +228,7 @@ export default function StudioPage() {
     {!ideas.length && <article className="empty-card channel-empty"><h3>No content ideas yet</h3><p>Create an idea in the content pipeline first.</p><a className="secondary" href="/ideas">Open content pipeline</a></article>}
     {selected && <>
       <p className="trend-method">{selected.title} · {selected.status}. AI generation, source verification, voice, and licensed assets are not configured; enter editorial content below.</p>
+      {channelProfile && <section className="studio-panel channel-guide"><div className="studio-panel-title"><h3>Channel writing guide · {channelProfile.name}</h3><a className="text-button" href="/channels">Edit profile →</a></div><p><b>Audience:</b> {channelProfile.audience_profile || "Not defined"}</p><p><b>Voice:</b> {channelProfile.brand_voice || "Not defined"}</p><p><b>Visual guidelines:</b> {channelProfile.visual_guidelines || "Not defined"}</p><p><b>Content pillars:</b> {channelProfile.content_pillars.length ? channelProfile.content_pillars.join(" · ") : "Not defined"}</p><p><b>Preferred formats:</b> {channelProfile.preferred_formats.map(format => format === "short" ? "Shorts" : "Long-form").join(" / ") || "Not set"} · <b>Target cadence:</b> {channelProfile.publishing_frequency_per_week === null ? "Not set" : `${channelProfile.publishing_frequency_per_week} per week`}</p>{!channelProfile.preferred_formats.includes(selected.format) && <p className="trend-method">This idea uses a format outside the channel preference. Continue if that choice is intentional.</p>}</section>}
       <form className="studio-panel" onSubmit={saveScript}>
         <div className="studio-panel-title"><h3>Script</h3><span>{scripts.length ? `${scripts.length} saved version(s)` : "No versions yet"}</span></div>
         <label>Human-authored script<textarea value={scriptBody} onChange={event => setScriptBody(event.target.value)} required maxLength={100000} placeholder="Write or paste your script. Saving creates an immutable version." /></label>
