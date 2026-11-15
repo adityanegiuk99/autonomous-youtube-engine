@@ -11,15 +11,15 @@ This runbook covers the current Docker Compose development stack. It is not a pr
 
 ## Create a local snapshot
 
-These examples use Bash (including WSL Bash) and assume the Compose services are running. Use a protected backup directory with enough free space. `docker compose stop api web` pauses writes while the matching database and media snapshots are created; restart the services when finished.
+These examples use Bash (including WSL Bash) and assume the Compose services are running. Use a protected backup directory with enough free space. Stop the worker, API, and dashboard before taking the paired database and media snapshots so no process changes either side of the backup set.
 
 ```bash
 mkdir -p backups
 stamp="$(date -u +%Y%m%dT%H%M%SZ)"
-docker compose stop api web
+docker compose stop worker api web
 docker compose exec -T db pg_dump -U aye -d aye -Fc > "backups/aye-db-${stamp}.dump"
 docker compose run --rm -T --no-deps --entrypoint tar api -czf - -C /data/media . > "backups/aye-media-${stamp}.tar.gz"
-docker compose start api web
+docker compose start api worker web
 ```
 
 Check that both files are non-empty and record their hashes in the protected backup location:
@@ -29,24 +29,24 @@ test -s "backups/aye-db-${stamp}.dump" && test -s "backups/aye-media-${stamp}.ta
 sha256sum "backups/aye-db-${stamp}.dump" "backups/aye-media-${stamp}.tar.gz"
 ```
 
-If snapshot creation fails, restart `api` and `web` before investigating. Protect backups as sensitive data: media and database records may contain unpublished content and personal notes.
+If snapshot creation fails, restart `api`, `worker`, and `web` before investigating. Protect backups as sensitive data: media and database records may contain unpublished content and personal notes.
 
 ## Restore a snapshot
 
-Restoring replaces current data. First preserve a fresh snapshot of the current installation if it may be needed. Confirm the chosen database dump and media archive share the same timestamp. Stop the dashboard and API, then restore into the existing `aye` database and media volume:
+Restoring replaces current data. First preserve a fresh snapshot of the current installation if it may be needed. Confirm the chosen database dump and media archive share the same timestamp. Stop the worker, dashboard, and API, then restore into the existing `aye` database and media volume:
 
 ```bash
-docker compose stop api web
+docker compose stop worker api web
 docker compose exec -T db pg_restore -U aye -d aye --clean --if-exists < backups/aye-db-YYYYMMDDTHHMMSSZ.dump
 docker compose run --rm -T --no-deps --entrypoint sh api -c 'find /data/media -mindepth 1 -maxdepth 1 -exec rm -rf -- {} + && tar -xzf - -C /data/media' < backups/aye-media-YYYYMMDDTHHMMSSZ.tar.gz
-docker compose start api web
+docker compose start api worker web
 ```
 
 After restore, check `http://localhost:8000/api/v1/health`, connect to the dashboard with the configured API token, inspect the Approval Center, and open a restored render and thumbnail. A database rollback does not roll back files by itself. Avoid `docker compose down -v`: it deletes the named database and media volumes.
 
 ## Schema changes and recovery limits
 
-The API container applies Alembic migrations at startup. Before updating an installation, create a paired database/media snapshot and keep the previous application image available until the updated stack is confirmed. This repository does not yet automate off-machine backups, retention, encryption, scheduled restore drills, monitoring, or disaster recovery. Local Docker volumes are not a backup until copied off the host and restore-checked.
+The API container applies Alembic migrations at startup. Before updating an installation, stop the worker while taking a paired database/media snapshot and keep the previous application image available until the updated stack is confirmed. This repository does not yet automate off-machine backups, retention, encryption, scheduled restore drills, full service monitoring, or disaster recovery. Local Docker volumes are not a backup until copied off the host and restore-checked.
 
 ## Inspect local media integrity
 
