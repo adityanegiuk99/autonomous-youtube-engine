@@ -54,7 +54,7 @@ The Operations page offers a read-only media audit at `GET /api/v1/operations/me
 
 ## Background production worker
 
-Docker Compose runs a separate `worker` service. Studio queues a production attempt in PostgreSQL and polls its durable status; the worker claims queued rows with row locking so worker replicas cannot claim the same attempt. `AYE_WORKER_POLL_SECONDS` controls the idle poll interval. API and worker share the `aye_media` volume. The worker waits for database schema startup, but does not provide automatic retries, heartbeats, or resumable FFmpeg checkpoints. A stopped worker can leave queued attempts unclaimed; Operations marks queued and running attempts stale after the configured timeout.
+Docker Compose runs a separate `worker` service. Studio queues a production attempt in PostgreSQL and polls its durable status; the worker claims queued rows with row locking so worker replicas cannot claim the same attempt. `AYE_WORKER_POLL_SECONDS` controls the idle poll interval. API and worker share the `aye_media` volume. Operations displays durable worker heartbeat records and the last reported active attempt. A stale heartbeat means the worker has not updated its status recently; it does not prove why the process stopped. The worker waits for database schema startup, but does not provide automatic retries or resumable FFmpeg checkpoints. A stopped worker can leave queued attempts unclaimed; Operations marks queued and running attempts stale after the configured timeout.
 
 ## Local publishing schedule
 

@@ -12,6 +12,7 @@ type Usage = {
 };
 type IntegrityIssue = { category: string; record_type: string; record_id: string | null; storage_key: string };
 type IntegrityReport = { checked_at: string; storage_root_available: boolean; referenced_files_checked: number; issues: IntegrityIssue[]; orphan_files_truncated: boolean; note: string };
+type WorkerHealth = { worker_id: string; started_at: string; last_seen_at: string; current_attempt_id: string | null; status: "online" | "stale"; age_seconds: number };
 type ProductionAttempt = { id: string; content_idea_id: string; storyboard_version_id: string; attempt_number: number; status: "queued" | "running" | "completed" | "failed"; started_at: string; finished_at: string | null; video_id: string | null; render_duration_seconds: number | null; source_bytes: number | null; output_bytes: number | null; failure_class: string | null; is_stale: boolean; age_seconds: number };
 const api = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000/api/v1";
 const integer = (value: number) => new Intl.NumberFormat().format(value);
@@ -29,6 +30,8 @@ export default function OperationsPage() {
   const [attempts, setAttempts] = useState<ProductionAttempt[]>([]);
   const [attemptError, setAttemptError] = useState("");
   const [recovering, setRecovering] = useState("");
+  const [workers, setWorkers] = useState<WorkerHealth[]>([]);
+  const [workerError, setWorkerError] = useState("");
 
   const loadAttempts = useCallback(async () => {
     setAttemptError("");
@@ -38,6 +41,16 @@ export default function OperationsPage() {
       if (!response.ok) throw new Error(data.detail ?? "Could not load production attempts");
       setAttempts(data);
     } catch (reason) { setAttemptError(reason instanceof Error ? reason.message : "Could not load production attempts"); }
+  }, []);
+
+  const loadWorkers = useCallback(async () => {
+    setWorkerError("");
+    try {
+      const response = await apiFetch(`${api}/operations/workers`);
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.detail ?? "Could not load worker health");
+      setWorkers(data);
+    } catch (reason) { setWorkerError(reason instanceof Error ? reason.message : "Could not load worker health"); }
   }, []);
 
   async function recoverAttempt(attempt: ProductionAttempt) {
@@ -51,7 +64,11 @@ export default function OperationsPage() {
     finally { setRecovering(""); }
   }
 
-  useEffect(() => { void loadAttempts(); }, [loadAttempts]);
+  useEffect(() => { void loadAttempts(); void loadWorkers(); }, [loadAttempts, loadWorkers]);
+  useEffect(() => {
+    const timer = window.setInterval(() => { void loadWorkers(); }, 10000);
+    return () => window.clearInterval(timer);
+  }, [loadWorkers]);
 
   async function auditMedia() {
     setIntegrityBusy(true); setIntegrityError("");
@@ -83,6 +100,12 @@ export default function OperationsPage() {
     <div className="section-heading"><div><h2>Operations and cost monitor</h2><p className="muted">Observed local production resources and render outcomes.</p></div><label className="period-select">Window<select value={days} onChange={event => setDays(Number(event.target.value))}><option value={7}>Last 7 days</option><option value={30}>Last 30 days</option><option value={90}>Last 90 days</option><option value={365}>Last 365 days</option></select></label></div>
     <article className="operations-note"><strong>Financial cost is unavailable</strong><p>No paid provider or cloud usage is connected. These measurements cover local FFmpeg render time and file volume only; they are not rupee estimates.</p></article>
     {busy && <p className="muted">Loading operational usage…</p>}{error && <p className="error-message">{error}</p>}
+    <section className="production-attempts">
+      <div className="section-heading"><div><h3>Background workers</h3><p className="muted">Heartbeat is refreshed while the worker is idle and during long renders.</p></div><button className="secondary" onClick={() => void loadWorkers()}>Refresh workers</button></div>
+      {workerError && <p className="error-message">{workerError}</p>}
+      {!workers.length && !workerError && <p className="muted">No worker heartbeat has been recorded. Start the Compose worker to process queued renders.</p>}
+      {workers.map(worker => <article className="production-attempt-row" key={worker.worker_id}><div><strong>{worker.status === "online" ? "Online" : "No recent heartbeat"} · {worker.worker_id}</strong><p>Last seen {new Date(worker.last_seen_at).toLocaleString()} · started {new Date(worker.started_at).toLocaleString()}</p><small>{worker.current_attempt_id ? `Active attempt ${worker.current_attempt_id}` : `Idle · heartbeat ${worker.age_seconds}s ago`}</small></div></article>)}
+    </section>
     {usage && <>
       <div className="stats-grid operations-stats">
         {[["PRODUCTION ATTEMPTS", integer(usage.attempts)], ["TECHNICAL QA PASSES", integer(usage.technical_qa_passes)], ["QA FAILURES", integer(usage.technical_qa_failures)], ["RENDER FAILURES", integer(usage.render_failures)], ["TOTAL RENDER TIME", duration(usage.render_seconds_total)], ["AVERAGE PER MEASURED ATTEMPT", duration(usage.render_seconds_average)], ["SOURCE MEDIA READ", bytes(usage.source_media_bytes)], ["VIDEO OUTPUT WRITTEN", bytes(usage.rendered_video_bytes)]].map(([label, value]) => <article className="stat-card" key={label}><div className="stat-title">{label}</div><div className="stat-value">{value}</div></article>)}

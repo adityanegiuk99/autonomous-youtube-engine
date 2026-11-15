@@ -55,7 +55,7 @@ See [data-model.md](data-model.md) for the initial entity contract.
 - Provider calls have timeouts, bounded retries, and idempotency keys where the provider supports them.
 - A PostgreSQL-backed worker currently handles asynchronous production renders; Redis/Celery and LangGraph remain future options for additional job types and persistent agent graphs.
 - Database migrations are required before schema changes are deployed.
-- Workflow history remains an audit timeline. Production attempts are durably queued and run by a separate worker; stale attempts can be recovered manually. Automatic retries, worker heartbeats, and resumable FFmpeg checkpoints are not implemented.
+- Workflow history remains an audit timeline. Production attempts are durably queued and run by a separate worker; stale attempts can be recovered manually. Worker heartbeats report liveness and the last active render to Operations. Automatic retries and resumable FFmpeg checkpoints are not implemented.
 
 ## Open decisions
 

@@ -17,6 +17,7 @@ This is the conceptual model, not a claim that every table is implemented. Postg
 | MediaAsset | storage key, type, checksum, user-attested rights, source URL, original filename |
 | Video | idea, storyboard version, render asset, thumbnail, media manifest, technical QA report, content hash |
 | ProductionAttempt | idea, storyboard, attempt number, queued/running/completed/failed state, timestamps, output/video reference, measured usage, failure class |
+| WorkerHeartbeat | worker process identity, startup and last-seen timestamps, currently claimed production attempt |
 | Approval | video, exact content hash, reviewer, decision, notes, timestamp |
 | WorkflowEvent | content idea, previous/current state, event type, actor, reason, safe metadata, timestamp |
 | PublishJob | video, approval, channel, content hash, metadata, private visibility, local schedule, status |
@@ -38,4 +39,4 @@ This is the conceptual model, not a claim that every table is implemented. Postg
 
 ## Foundation implementation
 
-Implemented migrations currently cover channel configuration, trend items, opportunity ideas, human-authored script/storyboard versions, silent previews, RSS source packs, uploaded media assets, technical QA metadata, content-hash-bound human approvals, imported analytics snapshots, append-only workflow event history, local private-only publishing schedules, and durable production attempt accounting. The Compose worker claims queued attempts using PostgreSQL row locks. User identity, OAuth connections, verified research claims, resumable upload state, and live analytics integrations remain future migrations. The initial API must not expose fields that imply an external account has been connected or verified.
+Implemented migrations currently cover channel configuration, trend items, opportunity ideas, human-authored script/storyboard versions, silent previews, RSS source packs, uploaded media assets, technical QA metadata, content-hash-bound human approvals, imported analytics snapshots, append-only workflow event history, local private-only publishing schedules, durable production attempt accounting, and worker heartbeat snapshots. The Compose worker claims queued attempts using PostgreSQL row locks. User identity, OAuth connections, verified research claims, resumable upload state, and live analytics integrations remain future migrations. The initial API must not expose fields that imply an external account has been connected or verified.

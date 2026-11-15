@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session
 
 from app.config import get_settings
 from app.database import get_db
-from app.models import ContentIdea, MediaAsset, ProductionAttempt, RenderedVideo, WorkflowEvent, utc_now
+from app.models import ContentIdea, MediaAsset, ProductionAttempt, RenderedVideo, WorkerHeartbeat, WorkflowEvent, utc_now
 from app.security import require_api_token
 from app.workflows import record_workflow_event
 
@@ -69,6 +69,15 @@ class ProductionAttemptRead(BaseModel):
     is_stale: bool
     age_seconds: int
     model_config = ConfigDict(from_attributes=True)
+
+
+class WorkerHealthRead(BaseModel):
+    worker_id: str
+    started_at: datetime
+    last_seen_at: datetime
+    current_attempt_id: UUID | None
+    status: Literal["online", "stale"]
+    age_seconds: int
 
 
 def _number(metadata: dict, key: str) -> float | None:
@@ -222,6 +231,22 @@ def list_production_attempts(limit: int = Query(default=50, ge=1, le=200), db: S
     attempts = db.scalars(select(ProductionAttempt).order_by(ProductionAttempt.started_at.desc()).limit(limit)).all()
     now = utc_now()
     return [_attempt_read(attempt, now, settings.production_stale_after_seconds) for attempt in attempts]
+
+
+@router.get("/workers", response_model=list[WorkerHealthRead])
+def list_workers(db: Session = Depends(get_db)):
+    workers = db.scalars(select(WorkerHeartbeat).order_by(WorkerHeartbeat.last_seen_at.desc()).limit(100)).all()
+    now = utc_now()
+    live_window = max(30, int(get_settings().worker_poll_seconds * 3))
+    result = []
+    for worker in workers:
+        age = max(0, int((now - _aware_utc(worker.last_seen_at)).total_seconds()))
+        result.append(WorkerHealthRead(
+            worker_id=worker.worker_id, started_at=worker.started_at,
+            last_seen_at=worker.last_seen_at, current_attempt_id=worker.current_attempt_id,
+            status="online" if age <= live_window else "stale", age_seconds=age,
+        ))
+    return result
 
 
 @router.get("/production-attempts/{attempt_id}", response_model=ProductionAttemptRead)

@@ -159,6 +159,15 @@ class ProductionAttempt(Base):
     failure_class: Mapped[str | None] = mapped_column(String(48))
 
 
+class WorkerHeartbeat(Base):
+    __tablename__ = "worker_heartbeats"
+
+    worker_id: Mapped[str] = mapped_column(String(255), primary_key=True)
+    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    last_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, index=True)
+    current_attempt_id: Mapped[UUID | None] = mapped_column(PGUUID(as_uuid=True))
+
+
 class Approval(Base):
     __tablename__ = "approvals"
 

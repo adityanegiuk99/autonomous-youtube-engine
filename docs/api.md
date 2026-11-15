@@ -49,6 +49,7 @@ Source packs preserve RSS metadata and URLs but do not verify factual claims. AI
 | GET | `/operations/render-usage?days=30` | Summarize local production render duration, bytes, and outcomes for 1–365 days |
 | GET | `/operations/media-integrity` | Check local referenced media files and report mismatches, missing files, unsafe references, and up to 100 orphans |
 | GET | `/operations/production-attempts?limit=50` | List durable render attempt states and whether running attempts have become stale |
+| GET | `/operations/workers` | List background worker heartbeats, liveness, and last reported active attempt |
 | GET | `/operations/production-attempts/{attempt_id}` | Poll the durable queued/running/completed/failed attempt status |
 | POST | `/operations/production-attempts/{attempt_id}/recover` | Close a stale interrupted attempt, count it against the retry ceiling, and clean its partial outputs |
 | GET | `/publishing/jobs` | List local publishing schedule records; these are not YouTube uploads |
@@ -70,7 +71,7 @@ The operations usage endpoint reports measured production render wall time, sour
 
 The read-only media integrity endpoint hashes source assets and rendered videos where checksums are recorded, verifies that referenced files remain inside the configured media directory, and checks thumbnails for presence. It does not delete or repair files.
 
-Production rendering can run synchronously through `/render-production` or be submitted through `/render-production-queue`. The queue stores an attempt before returning; the Compose worker claims queued rows with PostgreSQL `FOR UPDATE SKIP LOCKED`, then runs the same preflight and render service. Repeated work for the same idea/storyboard is rejected while queued or running. Queue attempts still require rights-confirmed media and technical QA; human approval remains a separate action. A worker crash leaves a running row for operator recovery after the configured stale timeout; a stopped worker leaves queued rows recoverable after that same timeout.
+Production rendering can run synchronously through `/render-production` or be submitted through `/render-production-queue`. The queue stores an attempt before returning; the Compose worker claims queued rows with PostgreSQL `FOR UPDATE SKIP LOCKED`, then runs the same preflight and render service. Repeated work for the same idea/storyboard is rejected while queued or running. Queue attempts still require rights-confirmed media and technical QA; human approval remains a separate action. The worker refreshes a durable heartbeat during idle polling and long renders; `/operations/workers` reports heartbeat age and the last reported attempt. A worker crash leaves a running row for operator recovery after the configured stale timeout; a stopped worker leaves queued rows recoverable after that same timeout.
 
 Local publishing schedules require a passing production QA result, an `approve` human decision for the currently active content hash, intact source/render files, and a future timezone-aware schedule. Visibility is fixed to `private`. These records prepare metadata and timing only; no OAuth, upload, or external scheduling call exists yet.
 
