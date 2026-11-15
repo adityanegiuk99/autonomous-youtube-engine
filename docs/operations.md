@@ -58,7 +58,7 @@ Docker Compose runs a separate `worker` service. The API healthcheck waits for i
 
 ## Local publishing schedule
 
-The Publishing page can save and cancel private-only schedule records for an exact, currently approved render. It does not upload or publish content. Cancelling a local entry does not undo an external action because none is attempted. Configure Google OAuth and implement resumable upload and recovery before treating any item as YouTube-scheduled.
+The Publishing page can save and cancel private-only schedule records for an exact, currently approved render. Saving requires a separate human confirmation of the exact title, description, tags, and visibility; the API records a canonical metadata hash and review time. This attestation is in addition to video approval, and any metadata edit requires a new review. The page does not upload or publish content. Cancelling a local entry does not undo an external action because none is attempted. Configure Google OAuth and implement resumable upload and recovery before treating any item as YouTube-scheduled.
 
 ## Recover an interrupted production render
 

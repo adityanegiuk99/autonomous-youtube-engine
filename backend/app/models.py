@@ -195,6 +195,8 @@ class PublishJob(Base):
     title: Mapped[str] = mapped_column(String(100), nullable=False)
     description: Mapped[str] = mapped_column(Text, nullable=False, default="")
     tags: Mapped[list[str]] = mapped_column(JSON, nullable=False, default=list)
+    metadata_hash: Mapped[str | None] = mapped_column(String(64))
+    metadata_reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     scheduled_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, index=True)
     visibility: Mapped[str] = mapped_column(String(16), nullable=False, default="private")
     status: Mapped[str] = mapped_column(String(32), nullable=False, default="scheduled_local")

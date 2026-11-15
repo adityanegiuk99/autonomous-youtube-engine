@@ -28,7 +28,7 @@ Phase 1 establishes service startup, configuration, persistence wiring, a health
 
 ## Trust and publishing boundary
 
-External content, source documents, and model output are untrusted data. They cannot change system instructions or authorize actions. Publishing requires a durable approval bound to an immutable content version, successful QA, and channel ownership/authorization checks. Upload defaults to private. The publishing worker cannot create approvals. Material edits invalidate approval.
+External content, source documents, and model output are untrusted data. They cannot change system instructions or authorize actions. Publishing requires a durable approval bound to an immutable content version, successful QA, an explicit metadata review fingerprint, and channel ownership/authorization checks. Upload defaults to private. A future publishing worker must validate both the content approval and metadata review and cannot create either. Material edits invalidate the corresponding review.
 
 OAuth credentials must be encrypted at rest and excluded from logs and API responses. Secrets are provided through environment configuration or a production secret manager, never committed. Apply least-privilege scopes, role and channel ownership checks, request limits, audit events, and backups before production use.
 

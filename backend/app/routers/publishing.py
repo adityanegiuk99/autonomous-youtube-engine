@@ -1,5 +1,6 @@
 from datetime import datetime
 import hashlib
+import json
 from typing import Literal
 from uuid import UUID, uuid4
 
@@ -24,12 +25,19 @@ def _lock_video_schedule(db: Session, video_id: UUID) -> None:
         db.execute(text("SELECT pg_advisory_xact_lock(:key1, :key2)"), {"key1": keys[0], "key2": keys[1]})
 
 
+def _metadata_hash(title: str, description: str, tags: list[str]) -> str:
+    canonical = json.dumps({"title": title, "description": description, "tags": tags,
+                            "visibility": "private"}, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+
 class PublishScheduleCreate(BaseModel):
     video_id: UUID
     scheduled_at: datetime
     title: str | None = Field(default=None, min_length=1, max_length=100)
     description: str = Field(default="", max_length=5000)
     tags: list[str] = Field(default_factory=list, max_length=30)
+    metadata_reviewed: bool = False
 
     @field_validator("scheduled_at")
     @classmethod
@@ -56,6 +64,8 @@ class PublishScheduleRead(BaseModel):
     title: str
     description: str
     tags: list[str]
+    metadata_hash: str | None
+    metadata_reviewed_at: datetime | None
     scheduled_at: datetime
     visibility: Literal["private"]
     status: Literal["scheduled_local", "cancelled"]
@@ -72,6 +82,8 @@ def list_publish_jobs(db: Session = Depends(get_db)):
 @router.post("/jobs", response_model=PublishScheduleRead, status_code=status.HTTP_201_CREATED)
 def create_publish_schedule(payload: PublishScheduleCreate, response: Response,
                             db: Session = Depends(get_db)):
+    if not payload.metadata_reviewed:
+        raise HTTPException(status_code=422, detail="Review and confirm the exact title, description, tags, and private visibility before saving the schedule")
     scheduled_at = payload.scheduled_at
     if scheduled_at <= utc_now():
         raise HTTPException(status_code=422, detail="Choose a future schedule time")
@@ -98,11 +110,14 @@ def create_publish_schedule(payload: PublishScheduleCreate, response: Response,
         raise HTTPException(status_code=422, detail="A non-empty video title is required")
     if len(title) > 100:
         raise HTTPException(status_code=422, detail="Video titles are limited to 100 characters; provide an edited title")
+    metadata_hash = _metadata_hash(title, payload.description, payload.tags)
+    metadata_reviewed_at = utc_now()
     existing = db.scalar(select(PublishJob).where(PublishJob.video_id == video.id))
     if existing is not None and existing.status == "scheduled_local":
         same = (existing.approval_id == approval.id and existing.content_hash == current_hash
                 and existing.scheduled_at == scheduled_at and existing.title == title
-                and existing.description == payload.description and existing.tags == payload.tags)
+                and existing.description == payload.description and existing.tags == payload.tags
+                and existing.metadata_hash == metadata_hash and existing.metadata_reviewed_at is not None)
         if same:
             response.status_code = status.HTTP_200_OK
             return existing
@@ -110,7 +125,9 @@ def create_publish_schedule(payload: PublishScheduleCreate, response: Response,
     if existing is None:
         job = PublishJob(id=uuid4(), video_id=video.id, approval_id=approval.id, channel_id=idea.channel_id,
                          content_hash=current_hash, title=title, description=payload.description,
-                         tags=payload.tags, scheduled_at=scheduled_at, visibility="private",
+                         tags=payload.tags, metadata_hash=metadata_hash,
+                         metadata_reviewed_at=metadata_reviewed_at,
+                         scheduled_at=scheduled_at, visibility="private",
                          status="scheduled_local", created_at=utc_now())
         db.add(job)
     else:
@@ -121,6 +138,8 @@ def create_publish_schedule(payload: PublishScheduleCreate, response: Response,
         job.title = title
         job.description = payload.description
         job.tags = payload.tags
+        job.metadata_hash = metadata_hash
+        job.metadata_reviewed_at = metadata_reviewed_at
         job.scheduled_at = scheduled_at
         job.visibility = "private"
         job.status = "scheduled_local"
@@ -131,7 +150,8 @@ def create_publish_schedule(payload: PublishScheduleCreate, response: Response,
                           "Human-approved render placed on the local publishing schedule; no YouTube upload was attempted",
                           {"video_id": str(video.id), "publish_job_id": str(job.id),
                            "content_hash": current_hash, "scheduled_at": scheduled_at.isoformat(),
-                           "visibility": "private", "upload_attempted": False},
+                           "visibility": "private", "metadata_hash": metadata_hash,
+                           "metadata_reviewed_at": metadata_reviewed_at.isoformat(), "upload_attempted": False},
                           previous_state=previous_state)
     db.commit()
     db.refresh(job)

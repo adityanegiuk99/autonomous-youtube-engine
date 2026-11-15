@@ -57,7 +57,7 @@ Source packs preserve RSS metadata and URLs but do not verify factual claims. AI
 | GET | `/operations/production-attempts/{attempt_id}` | Poll the durable queued/running/completed/failed attempt status |
 | POST | `/operations/production-attempts/{attempt_id}/recover` | Close a stale interrupted attempt, count it against the retry ceiling, and clean its partial outputs |
 | GET | `/publishing/jobs` | List local publishing schedule records; these are not YouTube uploads |
-| POST | `/publishing/jobs` | Save a future private-only schedule for an exact-hash approved render |
+| POST | `/publishing/jobs` | Save a future private-only schedule after explicit human review of exact title, description, tags, and visibility |
 | DELETE | `/publishing/jobs/{job_id}` | Cancel a local schedule record |
 | GET | `/dashboard/summary` | Return persisted channel, trend, idea, and render summary counts with recent items |
 
@@ -79,7 +79,7 @@ The read-only media integrity endpoint hashes source assets and rendered videos 
 
 Production rendering can run synchronously through `/render-production` or be submitted through `/render-production-queue`. The queue stores an attempt before returning; the Compose worker claims queued rows with PostgreSQL `FOR UPDATE SKIP LOCKED`, then runs the same preflight and render service. Repeated work for the same idea/storyboard is rejected while queued or running. Queue attempts still require rights-confirmed media and technical QA; human approval remains a separate action. The worker refreshes a durable heartbeat during idle polling and long renders; `/operations/workers` reports heartbeat age and the last reported attempt. A worker crash leaves a running row for operator recovery after the configured stale timeout; a stopped worker leaves queued rows recoverable after that same timeout.
 
-Local publishing schedules require a passing production QA result, an `approve` human decision for the currently active content hash, intact source/render files, and a future timezone-aware schedule. Visibility is fixed to `private`. These records prepare metadata and timing only; no OAuth, upload, or external scheduling call exists yet.
+Local publishing schedules require a passing production QA result, an `approve` human decision for the currently active content hash, intact source/render files, and a future timezone-aware schedule. The schedule request must explicitly attest that the exact title, description, tags, and private visibility were reviewed; the API stores a canonical metadata hash and review timestamp alongside the content approval hash. Any changed metadata requires a new explicit review. Visibility is fixed to `private`. These records prepare metadata and timing only; no OAuth, upload, or external scheduling call exists yet. Any future publisher must validate both approval hashes and the metadata review timestamp before upload.
 
 ## Trend intelligence
 

@@ -20,7 +20,7 @@ This is the conceptual model, not a claim that every table is implemented. Postg
 | WorkerHeartbeat | worker process identity, startup and last-seen timestamps, currently claimed production attempt |
 | Approval | video, exact content hash, reviewer, decision, notes, timestamp |
 | WorkflowEvent | content idea, previous/current state, event type, actor, reason, safe metadata, timestamp |
-| PublishJob | video, approval, channel, content hash, metadata, private visibility, local schedule, status |
+| PublishJob | video, approval, channel, content hash, title/description/tags, metadata hash and review time, private visibility, local schedule, status |
 | AnalyticsSnapshot | configured channel, external video ID, metrics, CSV import batch, collection time |
 | ContentExperiment | channel, hypothesis, tested variable, disjoint control/treatment video IDs, metric, lifecycle, notes |
 | AgentRun | workflow subject, agent/type, status, attempt, bounded logs, timestamps |
@@ -34,10 +34,11 @@ This is the conceptual model, not a claim that every table is implemented. Postg
 - Unique `(content_idea_id, version)` for scripts/storyboards.
 - Approval is valid only when the current video content hash equals the approved hash and QA is passing.
 - A local publish schedule is permitted only for a passing render with a current human approval matching the exact content hash; local schedules do not imply upload.
+- A local schedule stores a hash and timestamp for human review of its exact title, description, tags, and fixed private visibility; any metadata change requires a new schedule review.
 - One local publish schedule is allowed per video; retrying the same schedule request is idempotent.
 - Never store plaintext OAuth refresh tokens; avoid secret values in logs and serialized workflow state.
 - Analytics values preserve provider collection time and metric provenance; missing values are not silently converted to zero.
 
 ## Foundation implementation
 
-Implemented migrations currently cover channel configuration, trend items, opportunity ideas, human-authored script/storyboard versions, silent previews, RSS source packs, uploaded media assets, technical QA metadata and caption sidecars, content-hash-bound human approvals, imported analytics snapshots, manually registered content experiments, append-only workflow event history, local private-only publishing schedules, durable production attempt accounting, and worker heartbeat snapshots. The Compose worker claims queued attempts using PostgreSQL row locks. User identity, OAuth connections, verified research claims, resumable upload state, and live analytics integrations remain future migrations. The initial API must not expose fields that imply an external account has been connected or verified.
+Implemented migrations currently cover channel configuration, trend items, opportunity ideas, human-authored script/storyboard versions, silent previews, RSS source packs, uploaded media assets, technical QA metadata and caption sidecars, content-hash-bound human approvals, imported analytics snapshots, manually registered content experiments, append-only workflow event history, local private-only publishing schedules with metadata review fingerprints, durable production attempt accounting, and worker heartbeat snapshots. The Compose worker claims queued attempts using PostgreSQL row locks. User identity, OAuth connections, verified research claims, resumable upload state, and live analytics integrations remain future migrations. The initial API must not expose fields that imply an external account has been connected or verified.
