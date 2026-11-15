@@ -10,7 +10,7 @@ The attached product blueprint defines the destination. This repository starts w
 | 4. Content generation | versioned scripts, formats, storyboard editor | Partial: versioned human script/storyboard API and Studio UI; AI generation pending provider |
 | 5. Video production | voice, licensed visuals, FFmpeg, captions, thumbnails, QA | Partial: rights-attested user media, PostgreSQL-backed FFmpeg worker queue, scene captions, thumbnail, technical QA; no TTS/stock integration |
 | 6. Publishing | OAuth, channel verification, human approval, resumable private-first upload | Partial: exact-version human approval and local private-only schedule records; OAuth/upload not started |
-| 7. Analytics and learning | snapshots, comparisons, evidence-backed recommendations | Partial: normalized CSV import and descriptive sample-aware summaries; live API pending OAuth |
+| 7. Analytics and learning | snapshots, comparisons, evidence-backed recommendations | Partial: normalized CSV import, sample-aware descriptions, and human-managed control/treatment experiment tracking; live API pending OAuth |
 | 8. Integration audit | operational security, recovery, costs, integration verification | In progress: persistent Approval Center, cautious analytics learning hypotheses, workflow event history, PostgreSQL-backed production queue, replay guard, durable render attempt records with stale-attempt recovery, worker liveness heartbeats, configurable per-storyboard attempt ceiling, measured local render resource dashboard, read-only media integrity audit, and operator recovery runbook; full audit pending |
 
 ## Phase 1 exit criteria

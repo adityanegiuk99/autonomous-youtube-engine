@@ -14,7 +14,7 @@ Agents are bounded capabilities invoked by application workflows. They receive t
 | QA | content versions, media, source dossier | checks, findings, pass/fail | critical finding blocks approval/publishing |
 | Publishing | exact approved version, destination, metadata | upload result and provider ID | separate service validates approval and channel auth |
 | Analytics | authorized channel/video IDs and time range | provider metrics with provenance | analytics service stores snapshots |
-| Learning | sufficiently sampled historical snapshots | recommendations, evidence, confidence | recommendations do not silently change strategy |
+| Learning | sufficiently sampled historical snapshots and completed manual experiments | descriptive comparisons, recommendations, evidence, confidence | recommendations do not silently change strategy; experiments require human group assignment |
 
 ## Workflow state and recovery
 

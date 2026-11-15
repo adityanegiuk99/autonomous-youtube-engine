@@ -4,15 +4,16 @@ import math
 import re
 import statistics
 from datetime import datetime, timezone
+from typing import Literal
 from uuid import UUID, uuid4
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, Response, UploadFile, status
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.models import AnalyticsSnapshot, Channel, utc_now
+from app.models import AnalyticsSnapshot, Channel, ContentExperiment, utc_now
 from app.security import require_api_token
 
 router = APIRouter(prefix="/analytics", tags=["analytics"], dependencies=[Depends(require_api_token)])
@@ -75,6 +76,54 @@ class LearningInsights(BaseModel):
     caveat: str
     signals: list[LearningSignal]
     suggested_review: str | None
+
+
+ExperimentMetric = Literal["views", "click_through_rate_percent", "average_view_duration_seconds",
+                           "watch_time_minutes", "likes", "comments", "subscribers_gained"]
+ExperimentStatus = Literal["planned", "running", "completed", "cancelled"]
+
+
+class ExperimentCreate(BaseModel):
+    channel_id: UUID
+    title: str = Field(min_length=1, max_length=120)
+    hypothesis: str = Field(min_length=1, max_length=5000)
+    variable: str = Field(min_length=1, max_length=80)
+    control_description: str = Field(min_length=1, max_length=500)
+    treatment_description: str = Field(min_length=1, max_length=500)
+    metric: ExperimentMetric
+    control_video_ids: list[str] = Field(min_length=1, max_length=100)
+    treatment_video_ids: list[str] = Field(min_length=1, max_length=100)
+    notes: str | None = Field(default=None, max_length=5000)
+
+
+class ExperimentUpdate(BaseModel):
+    status: ExperimentStatus | None = None
+    notes: str | None = Field(default=None, max_length=5000)
+
+
+class ExperimentRead(BaseModel):
+    id: UUID
+    channel_id: UUID
+    title: str
+    hypothesis: str
+    variable: str
+    control_description: str
+    treatment_description: str
+    metric: ExperimentMetric
+    control_video_ids: list[str]
+    treatment_video_ids: list[str]
+    status: ExperimentStatus
+    notes: str | None
+    created_at: datetime
+    started_at: datetime | None
+    finished_at: datetime | None
+    control_sample_size: int
+    treatment_sample_size: int
+    control_median: float | None
+    treatment_median: float | None
+    difference_percent: float | None
+    caveat: str
+    model_config = ConfigDict(from_attributes=True)
 
 
 def _parse_row(row: dict[str, str], line_number: int) -> tuple[str, datetime, dict]:
@@ -255,3 +304,117 @@ def channel_learning_insights(channel_id: UUID, db: Session = Depends(get_db)):
     return LearningInsights(channel_id=channel_id, video_count=count, evidence_strength=strength,
                             basis=f"Latest snapshot per video; compared the {group_size} highest-view and {group_size} lowest-view videos",
                             caveat=caveat, signals=signals, suggested_review=suggested_review)
+
+
+def _latest_channel_snapshots(channel_id: UUID, db: Session) -> dict[str, AnalyticsSnapshot]:
+    snapshots = db.scalars(select(AnalyticsSnapshot).where(AnalyticsSnapshot.channel_id == channel_id)
+                           .order_by(AnalyticsSnapshot.collected_at.asc())).all()
+    latest: dict[str, AnalyticsSnapshot] = {}
+    for snapshot in snapshots:
+        previous = latest.get(snapshot.external_video_id)
+        if previous is None or snapshot.collected_at > previous.collected_at:
+            latest[snapshot.external_video_id] = snapshot
+    return latest
+
+
+def _experiment_read(experiment: ContentExperiment, latest: dict[str, AnalyticsSnapshot]) -> ExperimentRead:
+    metric = experiment.metric
+    control = [latest[video_id].metrics[metric] for video_id in experiment.control_video_ids if video_id in latest]
+    treatment = [latest[video_id].metrics[metric] for video_id in experiment.treatment_video_ids if video_id in latest]
+    control_median = statistics.median(control) if control else None
+    treatment_median = statistics.median(treatment) if treatment else None
+    difference = (round((treatment_median - control_median) / control_median * 100, 1)
+                  if control_median is not None and treatment_median is not None and control_median > 0 else None)
+    return ExperimentRead(
+        id=experiment.id, channel_id=experiment.channel_id, title=experiment.title,
+        hypothesis=experiment.hypothesis, variable=experiment.variable,
+        control_description=experiment.control_description,
+        treatment_description=experiment.treatment_description, metric=metric,
+        control_video_ids=experiment.control_video_ids,
+        treatment_video_ids=experiment.treatment_video_ids, status=experiment.status,
+        notes=experiment.notes, created_at=experiment.created_at,
+        started_at=experiment.started_at, finished_at=experiment.finished_at,
+        control_sample_size=len(control), treatment_sample_size=len(treatment),
+        control_median=round(control_median, 2) if control_median is not None else None,
+        treatment_median=round(treatment_median, 2) if treatment_median is not None else None,
+        difference_percent=difference,
+        caveat="Descriptive medians from the latest imported snapshot per listed video. Group assignment was manual; results are not causal and may reflect video age, topic, format, promotion, or other differences.",
+    )
+
+
+def _validate_experiment_groups(control: list[str], treatment: list[str]) -> None:
+    if any(not re.fullmatch(r"[A-Za-z0-9_-]{11}", video_id) for video_id in control + treatment):
+        raise HTTPException(status_code=422, detail="Experiment groups must contain valid 11-character YouTube video IDs")
+    if len(set(control)) != len(control) or len(set(treatment)) != len(treatment):
+        raise HTTPException(status_code=422, detail="A video ID cannot be repeated within an experiment group")
+    if set(control) & set(treatment):
+        raise HTTPException(status_code=422, detail="Control and treatment video groups must not overlap")
+
+
+@router.get("/channels/{channel_id}/experiments", response_model=list[ExperimentRead])
+def list_experiments(channel_id: UUID, db: Session = Depends(get_db)):
+    if db.get(Channel, channel_id) is None:
+        raise HTTPException(status_code=404, detail="Channel configuration not found")
+    latest = _latest_channel_snapshots(channel_id, db)
+    experiments = db.scalars(select(ContentExperiment).where(
+        ContentExperiment.channel_id == channel_id,
+    ).order_by(ContentExperiment.created_at.desc()).limit(100)).all()
+    return [_experiment_read(experiment, latest) for experiment in experiments]
+
+
+@router.post("/experiments", response_model=ExperimentRead, status_code=201)
+def create_experiment(payload: ExperimentCreate, db: Session = Depends(get_db)):
+    if db.get(Channel, payload.channel_id) is None:
+        raise HTTPException(status_code=404, detail="Channel configuration not found")
+    required_text = (payload.title, payload.hypothesis, payload.variable,
+                     payload.control_description, payload.treatment_description)
+    if any(not value.strip() for value in required_text):
+        raise HTTPException(status_code=422, detail="Experiment name, hypothesis, variable, and group descriptions cannot be blank")
+    _validate_experiment_groups(payload.control_video_ids, payload.treatment_video_ids)
+    selected_ids = set(payload.control_video_ids + payload.treatment_video_ids)
+    foreign_ids = set(db.scalars(select(AnalyticsSnapshot.external_video_id).where(
+        AnalyticsSnapshot.external_video_id.in_(selected_ids),
+        AnalyticsSnapshot.channel_id != payload.channel_id,
+    )).all())
+    channel_ids = set(db.scalars(select(AnalyticsSnapshot.external_video_id).where(
+        AnalyticsSnapshot.external_video_id.in_(selected_ids),
+        AnalyticsSnapshot.channel_id == payload.channel_id,
+    )).all())
+    if foreign_ids - channel_ids:
+        raise HTTPException(status_code=422, detail="A selected video has analytics imported under another channel")
+    experiment = ContentExperiment(
+        channel_id=payload.channel_id, title=payload.title.strip(),
+        hypothesis=payload.hypothesis.strip(), variable=payload.variable.strip(),
+        control_description=payload.control_description.strip(),
+        treatment_description=payload.treatment_description.strip(), metric=payload.metric,
+        control_video_ids=payload.control_video_ids,
+        treatment_video_ids=payload.treatment_video_ids, status="planned",
+        notes=payload.notes.strip() if payload.notes else None,
+    )
+    db.add(experiment)
+    db.commit()
+    db.refresh(experiment)
+    return _experiment_read(experiment, _latest_channel_snapshots(payload.channel_id, db))
+
+
+@router.patch("/experiments/{experiment_id}", response_model=ExperimentRead)
+def update_experiment(experiment_id: UUID, payload: ExperimentUpdate, db: Session = Depends(get_db)):
+    experiment = db.get(ContentExperiment, experiment_id)
+    if experiment is None:
+        raise HTTPException(status_code=404, detail="Experiment not found")
+    if "notes" in payload.model_fields_set:
+        experiment.notes = payload.notes.strip() if payload.notes else None
+    if payload.status is not None and payload.status != experiment.status:
+        transitions = {"planned": {"running", "cancelled"}, "running": {"completed", "cancelled"},
+                       "completed": set(), "cancelled": set()}
+        if payload.status not in transitions[experiment.status]:
+            raise HTTPException(status_code=409, detail=f"Experiment cannot move from {experiment.status} to {payload.status}")
+        experiment.status = payload.status
+        now = utc_now()
+        if payload.status == "running":
+            experiment.started_at = now
+        if payload.status in ("completed", "cancelled"):
+            experiment.finished_at = now
+    db.commit()
+    db.refresh(experiment)
+    return _experiment_read(experiment, _latest_channel_snapshots(experiment.channel_id, db))

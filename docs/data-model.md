@@ -22,6 +22,7 @@ This is the conceptual model, not a claim that every table is implemented. Postg
 | WorkflowEvent | content idea, previous/current state, event type, actor, reason, safe metadata, timestamp |
 | PublishJob | video, approval, channel, content hash, metadata, private visibility, local schedule, status |
 | AnalyticsSnapshot | configured channel, external video ID, metrics, CSV import batch, collection time |
+| ContentExperiment | channel, hypothesis, tested variable, disjoint control/treatment video IDs, metric, lifecycle, notes |
 | AgentRun | workflow subject, agent/type, status, attempt, bounded logs, timestamps |
 | WorkflowCheckpoint | workflow ID, subject, serialized state reference, schema version, updated time |
 | AuditLog | actor, action, target, outcome, timestamp, safe metadata |
@@ -39,4 +40,4 @@ This is the conceptual model, not a claim that every table is implemented. Postg
 
 ## Foundation implementation
 
-Implemented migrations currently cover channel configuration, trend items, opportunity ideas, human-authored script/storyboard versions, silent previews, RSS source packs, uploaded media assets, technical QA metadata, content-hash-bound human approvals, imported analytics snapshots, append-only workflow event history, local private-only publishing schedules, durable production attempt accounting, and worker heartbeat snapshots. The Compose worker claims queued attempts using PostgreSQL row locks. User identity, OAuth connections, verified research claims, resumable upload state, and live analytics integrations remain future migrations. The initial API must not expose fields that imply an external account has been connected or verified.
+Implemented migrations currently cover channel configuration, trend items, opportunity ideas, human-authored script/storyboard versions, silent previews, RSS source packs, uploaded media assets, technical QA metadata, content-hash-bound human approvals, imported analytics snapshots, manually registered content experiments, append-only workflow event history, local private-only publishing schedules, durable production attempt accounting, and worker heartbeat snapshots. The Compose worker claims queued attempts using PostgreSQL row locks. User identity, OAuth connections, verified research claims, resumable upload state, and live analytics integrations remain future migrations. The initial API must not expose fields that imply an external account has been connected or verified.

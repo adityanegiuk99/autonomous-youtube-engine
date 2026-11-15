@@ -1,7 +1,7 @@
 from datetime import datetime, timezone
 from uuid import UUID, uuid4
 
-from sqlalchemy import BigInteger, Boolean, DateTime, Float, ForeignKey, Index, JSON, String, Text, UniqueConstraint, text
+from sqlalchemy import BigInteger, Boolean, CheckConstraint, DateTime, Float, ForeignKey, Index, JSON, String, Text, UniqueConstraint, text
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -212,6 +212,31 @@ class AnalyticsSnapshot(Base):
     source: Mapped[str] = mapped_column(String(32), nullable=False, default="user_csv")
     import_id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utc_now)
+
+
+class ContentExperiment(Base):
+    __tablename__ = "content_experiments"
+    __table_args__ = (
+        CheckConstraint("status IN ('planned', 'running', 'completed', 'cancelled')", name="ck_content_experiments_status"),
+        CheckConstraint("metric IN ('views', 'click_through_rate_percent', 'average_view_duration_seconds', 'watch_time_minutes', 'likes', 'comments', 'subscribers_gained')", name="ck_content_experiments_metric"),
+        Index("ix_content_experiments_channel_created", "channel_id", "created_at"),
+    )
+
+    id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True, default=uuid4)
+    channel_id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), ForeignKey("channels.id", ondelete="RESTRICT"), nullable=False)
+    title: Mapped[str] = mapped_column(String(120), nullable=False)
+    hypothesis: Mapped[str] = mapped_column(Text, nullable=False)
+    variable: Mapped[str] = mapped_column(String(80), nullable=False)
+    control_description: Mapped[str] = mapped_column(String(500), nullable=False)
+    treatment_description: Mapped[str] = mapped_column(String(500), nullable=False)
+    metric: Mapped[str] = mapped_column(String(48), nullable=False)
+    control_video_ids: Mapped[list[str]] = mapped_column(JSON, nullable=False)
+    treatment_video_ids: Mapped[list[str]] = mapped_column(JSON, nullable=False)
+    status: Mapped[str] = mapped_column(String(16), nullable=False, default="planned")
+    notes: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utc_now)
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
 class WorkflowEvent(Base):
