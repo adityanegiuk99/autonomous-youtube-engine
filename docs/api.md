@@ -54,7 +54,7 @@ Analytics CSV imports require the exact header from `/analytics/csv-template`. C
 
 Workflow events are appended in the same transaction as idea creation, script/storyboard saves, renders, and human approval decisions. They retain previous/current state, actor label, event type, reason, and safe structured metadata. Existing ideas are not backfilled; their response falls back to the current idea status until new events are recorded. This is an audit timeline, not a resumable job queue; bounded retries and workflow checkpoints remain unimplemented.
 
-Sequential production render replays reuse an intact, passing render for the same storyboard and media inputs when it has no final decision, returning HTTP 200. If that exact render already has an approval decision, another render request returns 409 so a new video row cannot silently create a second decision for the same render. Missing or changed files are never reused. Concurrent requests are not serialized yet; a durable render-job queue/lock remains future work.
+Production render requests for the same idea/storyboard are serialized by a PostgreSQL transaction-scoped advisory lock. After acquiring the lock, a replay reuses an intact, passing render for the same storyboard and media inputs when it has no final decision, returning HTTP 200. If that exact render already has an approval decision, another request returns 409 so a new video row cannot silently create a second decision for the same render. Missing or changed files are never reused. This lock coordinates concurrent API requests but is not a durable job queue; crash recovery, bounded retries, and resumable checkpoints remain future work.
 
 ## Trend intelligence
 

@@ -6,7 +6,7 @@ from uuid import UUID, uuid4
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, ConfigDict
-from sqlalchemy import desc, select
+from sqlalchemy import desc, select, text
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
@@ -123,6 +123,17 @@ def render_final_video(idea_id: UUID, response: Response, storyboard_version_id:
             raise HTTPException(status_code=422, detail="Storyboard asset types or rights confirmation are invalid")
         if any(asset.license_type != "owned" for asset in (image, audio)) and not scene.get("source_attribution"):
             raise HTTPException(status_code=422, detail="Non-owned storyboard media needs source attribution")
+
+    # Keep concurrent requests for the same immutable render inputs from both
+    # starting FFmpeg. The transaction lock is released on commit, error, or disconnect.
+    if db.bind is not None and db.bind.dialect.name == "postgresql":
+        lock_digest = hashlib.sha256(
+            f"aye:production:{idea_id}:{storyboard_version_id}".encode("ascii")
+        ).digest()
+        lock_keys = (int.from_bytes(lock_digest[:4], "big", signed=True),
+                     int.from_bytes(lock_digest[4:8], "big", signed=True))
+        db.execute(text("SELECT pg_advisory_xact_lock(:key1, :key2)"),
+                   {"key1": lock_keys[0], "key2": lock_keys[1]})
 
     settings = get_settings()
     media_dir = Path(settings.media_dir).resolve()
