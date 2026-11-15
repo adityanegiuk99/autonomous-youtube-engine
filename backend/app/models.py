@@ -1,7 +1,7 @@
 from datetime import datetime, timezone
 from uuid import UUID, uuid4
 
-from sqlalchemy import Boolean, DateTime, String, Text
+from sqlalchemy import Boolean, DateTime, Float, ForeignKey, JSON, String, Text, UniqueConstraint
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -24,3 +24,92 @@ class Channel(Base):
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utc_now)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utc_now, onupdate=utc_now)
+
+
+class TrendItem(Base):
+    __tablename__ = "trend_items"
+
+    id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True, default=uuid4)
+    canonical_key: Mapped[str] = mapped_column(String(64), nullable=False, unique=True)
+    title: Mapped[str] = mapped_column(String(500), nullable=False)
+    summary: Mapped[str | None] = mapped_column(Text)
+    summary_source_url: Mapped[str | None] = mapped_column(String(2048))
+    source_urls: Mapped[list[str]] = mapped_column(JSON, nullable=False, default=list)
+    article_urls: Mapped[list[str]] = mapped_column(JSON, nullable=False, default=list)
+    trend_score: Mapped[float] = mapped_column(Float, nullable=False, default=0)
+    published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    first_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utc_now)
+    last_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utc_now, onupdate=utc_now)
+
+
+class ResearchDocument(Base):
+    __tablename__ = "research_documents"
+    __table_args__ = (UniqueConstraint("trend_item_id", "version", name="uq_research_trend_version"),)
+
+    id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True, default=uuid4)
+    trend_item_id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), ForeignKey("trend_items.id", ondelete="CASCADE"), nullable=False, index=True)
+    version: Mapped[int] = mapped_column(nullable=False)
+    document_type: Mapped[str] = mapped_column(String(32), nullable=False)
+    content: Mapped[dict] = mapped_column(JSON, nullable=False)
+    content_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utc_now)
+
+
+class ContentIdea(Base):
+    __tablename__ = "content_ideas"
+
+    id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True, default=uuid4)
+    channel_id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), ForeignKey("channels.id", ondelete="RESTRICT"), nullable=False, index=True)
+    trend_item_id: Mapped[UUID | None] = mapped_column(PGUUID(as_uuid=True), ForeignKey("trend_items.id", ondelete="SET NULL"), index=True)
+    title: Mapped[str] = mapped_column(String(500), nullable=False)
+    format: Mapped[str] = mapped_column(String(16), nullable=False)
+    trend_velocity: Mapped[float] = mapped_column(Float, nullable=False)
+    engagement_potential: Mapped[float] = mapped_column(Float, nullable=False)
+    audience_relevance: Mapped[float] = mapped_column(Float, nullable=False)
+    originality: Mapped[float] = mapped_column(Float, nullable=False)
+    research_quality: Mapped[float] = mapped_column(Float, nullable=False)
+    competition: Mapped[float | None] = mapped_column(Float)
+    opportunity_score: Mapped[float] = mapped_column(Float, nullable=False)
+    status: Mapped[str] = mapped_column(String(32), nullable=False, default="DISCOVERED")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utc_now)
+
+
+class ScriptVersion(Base):
+    __tablename__ = "scripts"
+    __table_args__ = (UniqueConstraint("content_idea_id", "version", name="uq_scripts_idea_version"),)
+
+    id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True, default=uuid4)
+    content_idea_id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), ForeignKey("content_ideas.id", ondelete="CASCADE"), nullable=False, index=True)
+    version: Mapped[int] = mapped_column(nullable=False)
+    body: Mapped[str] = mapped_column(Text, nullable=False)
+    content_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    origin: Mapped[str] = mapped_column(String(24), nullable=False, default="human")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utc_now)
+
+
+class StoryboardVersion(Base):
+    __tablename__ = "storyboards"
+    __table_args__ = (UniqueConstraint("content_idea_id", "version", name="uq_storyboards_idea_version"),)
+
+    id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True, default=uuid4)
+    content_idea_id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), ForeignKey("content_ideas.id", ondelete="CASCADE"), nullable=False, index=True)
+    script_version_id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), ForeignKey("scripts.id", ondelete="RESTRICT"), nullable=False)
+    version: Mapped[int] = mapped_column(nullable=False)
+    scenes: Mapped[list[dict]] = mapped_column(JSON, nullable=False)
+    content_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utc_now)
+
+
+class RenderedVideo(Base):
+    __tablename__ = "videos"
+
+    id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True, default=uuid4)
+    content_idea_id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), ForeignKey("content_ideas.id", ondelete="CASCADE"), nullable=False, index=True)
+    storyboard_version_id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), ForeignKey("storyboards.id", ondelete="RESTRICT"), nullable=False)
+    storage_key: Mapped[str] = mapped_column(String(80), nullable=False, unique=True)
+    checksum: Mapped[str] = mapped_column(String(64), nullable=False)
+    duration_seconds: Mapped[float] = mapped_column(Float, nullable=False)
+    width: Mapped[int] = mapped_column(nullable=False)
+    height: Mapped[int] = mapped_column(nullable=False)
+    status: Mapped[str] = mapped_column(String(32), nullable=False, default="PREVIEW_RENDERED")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utc_now)

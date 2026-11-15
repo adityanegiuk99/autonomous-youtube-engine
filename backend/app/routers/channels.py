@@ -1,14 +1,15 @@
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Response, status
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.models import Channel
+from app.models import Channel, ContentIdea
 from app.schemas import ChannelCreate, ChannelRead, ChannelUpdate
+from app.security import require_api_token
 
-router = APIRouter(prefix="/channels", tags=["channels"])
+router = APIRouter(prefix="/channels", tags=["channels"], dependencies=[Depends(require_api_token)])
 
 
 @router.get("", response_model=list[ChannelRead])
@@ -50,6 +51,8 @@ def delete_channel(channel_id: UUID, db: Session = Depends(get_db)):
     channel = db.get(Channel, channel_id)
     if channel is None:
         raise HTTPException(status_code=404, detail="Channel not found")
+    if db.scalar(select(func.count()).select_from(ContentIdea).where(ContentIdea.channel_id == channel_id)):
+        raise HTTPException(status_code=409, detail="Channel has content ideas and cannot be deleted")
     db.delete(channel)
     db.commit()
     return Response(status_code=status.HTTP_204_NO_CONTENT)

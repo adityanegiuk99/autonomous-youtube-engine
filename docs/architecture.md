@@ -32,6 +32,8 @@ External content, source documents, and model output are untrusted data. They ca
 
 OAuth credentials must be encrypted at rest and excluded from logs and API responses. Secrets are provided through environment configuration or a production secret manager, never committed. Apply least-privilege scopes, role and channel ownership checks, request limits, audit events, and backups before production use.
 
+The foundation uses a single shared bearer token configured by the local operator. It is checked with constant-time comparison, required on all data routers, and held in browser session storage. This protects a local single-owner instance from anonymous access but does not provide multi-user roles, account identity, or production tenancy.
+
 ## Key data relationships
 
 - A user owns zero or more channels; a channel has one strategy and many content ideas.

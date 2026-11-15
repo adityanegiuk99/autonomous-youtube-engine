@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import "./style.css";
+import { ApiSession } from "./components/api-session";
 
 export const metadata: Metadata = {
   title: "AYE | Autonomous YouTube Engine",
@@ -7,5 +8,5 @@ export const metadata: Metadata = {
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
-  return <html lang="en"><body>{children}</body></html>;
+  return <html lang="en"><body><ApiSession>{children}</ApiSession></body></html>;
 }

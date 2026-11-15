@@ -6,7 +6,7 @@ services:
       POSTGRES_USER: aye
       POSTGRES_PASSWORD: aye
     ports:
-      - "5432:5432"
+      - "127.0.0.1:5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
@@ -19,18 +19,24 @@ services:
     environment:
       AYE_DATABASE_URL: postgresql+psycopg://aye:aye@db:5432/aye
       AYE_CORS_ORIGINS: http://localhost:3000
+      AYE_API_TOKEN: ${AYE_API_TOKEN:?Set AYE_API_TOKEN in the root .env file}
+      AYE_RSS_FEED_URLS: ${AYE_RSS_FEED_URLS:-}
+      AYE_MEDIA_DIR: /data/media
     ports:
-      - "8000:8000"
+      - "127.0.0.1:8000:8000"
     depends_on:
       db:
         condition: service_healthy
+    volumes:
+      - aye_media:/data/media
   web:
     build: ./frontend
     environment:
       NEXT_PUBLIC_API_BASE_URL: http://localhost:8000/api/v1
     ports:
-      - "3000:3000"
+      - "127.0.0.1:3000:3000"
     depends_on:
       - api
 volumes:
   postgres_data:
+  aye_media:

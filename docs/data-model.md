@@ -10,6 +10,7 @@ This is the conceptual model, not a claim that every table is implemented. Postg
 | OAuthConnection | owner/channel, provider, encrypted tokens, scopes, expiry, rotation metadata |
 | TrendSource | provider, configuration, enabled state |
 | TrendItem | source, canonical topic key, title, references, trend measurements, observed time |
+| ResearchDocument | trend item, version, source-pack or researched dossier, structured content, immutable content hash |
 | ContentIdea | channel, trend (optional), topic, format, score components, state |
 | ResearchDocument | idea, source references, claims, conflicts, generated time |
 | ScriptVersion | idea, version, body/structured sections, source links, content hash |
@@ -35,4 +36,4 @@ This is the conceptual model, not a claim that every table is implemented. Postg
 
 ## Foundation implementation
 
-Phase 1 implements only the `Channel` configuration slice with a local development database. User identity, OAuth connections, and all content lifecycle records remain future migrations. The initial API must not expose fields that imply an external account has been connected or verified.
+Implemented migrations currently cover channel configuration, trend items, opportunity ideas, human-authored script/storyboard versions, silent preview records, and RSS source packs. User identity, OAuth connections, verified research claims, final production assets, approvals, publishing jobs, and analytics remain future migrations. The initial API must not expose fields that imply an external account has been connected or verified.

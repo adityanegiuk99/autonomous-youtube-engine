@@ -1,11 +1,17 @@
 from functools import lru_cache
 
+from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
     database_url: str = "postgresql+psycopg://aye:aye@localhost:5432/aye"
     cors_origins: str = "http://localhost:3000"
+    rss_feed_urls: str = ""
+    max_feed_bytes: int = Field(default=2_000_000, ge=4096, le=20_000_000)
+    media_dir: str = "media"
+    ffmpeg_binary: str = "ffmpeg"
+    api_token: str | None = None
 
     model_config = SettingsConfigDict(env_prefix="AYE_", env_file=".env", extra="ignore")
 

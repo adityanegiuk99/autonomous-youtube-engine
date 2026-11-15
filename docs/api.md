@@ -1,20 +1,51 @@
 # AYE API Contract (Initial)
 
-Base path: `/api/v1`. JSON requests and responses use snake_case. Errors use standard HTTP status codes and a stable `{ "detail": "..." }` shape. UUIDs identify resources. Authentication is intentionally not implemented in the foundation slice; do not expose this API to an untrusted network until authentication and authorization are added.
+Base path: `/api/v1`. JSON requests and responses use snake_case. Errors use standard HTTP status codes and a stable `{ "detail": "..." }` shape. UUIDs identify resources. `/health` is public. All data routes require `Authorization: Bearer <AYE_API_TOKEN>`, configured with a random value of at least 32 characters. This is single-owner local access control, not multi-user identity or a production tenancy model.
 
 ## Foundation endpoints
 
 | Method | Path | Behavior |
 |---|---|---|
 | GET | `/health` | Process health; no dependency secrets or internals |
+| GET | `/auth/verify` | Validate local bearer token |
 | GET | `/channels` | List configured channels |
 | POST | `/channels` | Create a channel configuration |
 | GET | `/channels/{channel_id}` | Retrieve configuration |
 | PATCH | `/channels/{channel_id}` | Update supplied configuration fields |
-| DELETE | `/channels/{channel_id}` | Remove a configuration with no dependent content |
+| DELETE | `/channels/{channel_id}` | Remove a configuration with no dependent content; returns 409 when ideas reference it |
 
 Channel fields: `name` (required), `niche`, `language`, `target_country`, `description`, `is_active`. IDs, timestamps, YouTube identity, OAuth status, and workflow state are server-owned. The API does not claim that a configured channel is connected to YouTube.
 
-## Planned resource groups
+## Remaining resource groups
 
-Trends and ideas, source-backed research, script/storyboard versions, video and QA, approvals, publish jobs, analytics, and agent runs will be added as their domain contracts are implemented. Approval and publishing routes must bind to immutable content versions and enforce ownership.
+Source packs preserve RSS metadata and URLs but do not verify factual claims. AI research synthesis, production QA, human approval, publishing, analytics, and agent-run monitoring are not implemented. Publishing routes must bind to immutable content versions and enforce authenticated ownership before they are added.
+
+## Opportunity and content endpoints
+
+| Method | Path | Behavior |
+|---|---|---|
+| GET | `/ideas?channel_id=&limit=50` | List ranked opportunities |
+| POST | `/ideas` | Create an idea with explicit human estimates; trend velocity comes from linked RSS item |
+| GET | `/ideas/{id}/scripts` | List immutable script versions |
+| POST | `/ideas/{id}/scripts` | Save a human-authored script version and content hash |
+| GET | `/ideas/{id}/storyboards` | List storyboard versions |
+| POST | `/ideas/{id}/storyboards` | Save scenes linked to an exact script version and content hash |
+| POST | `/ideas/{id}/render-preview?storyboard_version_id=` | Render a silent graphic animatic preview with FFmpeg |
+| GET | `/videos?idea_id=&limit=50` | List rendered previews |
+| GET | `/videos/{id}` | Retrieve preview metadata |
+| GET | `/videos/{id}/file` | Download the MP4 preview |
+
+The opportunity score uses the blueprint's weighted formula. The RSS heuristic is used as the trend-velocity input, and engagement, audience relevance, originality, and research quality are user estimates. Script and storyboard endpoints save human input; they do not claim AI generation.
+
+Preview rendering creates scene cards from storyboard text and exports a silent MP4. It is an animatic for reviewing pacing and scene order, not a finished video: it has no voiceover, sourced visuals, thumbnail, or production QA pass. FFmpeg is installed in the API image; preview artifacts are stored in the `aye_media` Docker volume.
+
+## Trend intelligence
+
+| Method | Path | Behavior |
+|---|---|---|
+| GET | `/trends?limit=50` | List stored trend candidates ordered by heuristic score |
+| POST | `/trends/discover` | Fetch configured HTTPS RSS feeds, deduplicate, and upsert items |
+| POST | `/research/trends/{id}/source-packs` | Snapshot synopsis provenance and article links as an unverified source pack |
+| GET | `/research/trends/{id}` | List saved source-pack versions |
+
+Feeds are configured with comma-separated `AYE_RSS_FEED_URLS`. Discovery rejects non-HTTPS and non-public hosts, disables redirects, limits response size, and reports per-feed failures. The score is source diversity (up to 60) plus recency (up to 40); it is not an audience or view prediction.
