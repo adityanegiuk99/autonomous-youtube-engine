@@ -4,7 +4,7 @@ AYE is planned as a human-approved, multi-channel content operations platform. T
 
 ## Run locally with Docker
 
-From the repository root, copy `.env.example` to `.env`, generate a random token (at least 32 characters) with `python -c "import secrets; print(secrets.token_urlsafe(48))"`, and place it in `AYE_API_TOKEN`. Add trusted HTTPS RSS URLs to `AYE_RSS_FEED_URLS` if you want to use Trend Radar. Then run:
+From the repository root, copy `.env.example` to `.env`, generate a random token (at least 32 characters) with `python -c "import secrets; print(secrets.token_urlsafe(48))"`, and place it in `AYE_API_TOKEN`. Add trusted HTTPS RSS URLs to `AYE_RSS_FEED_URLS` if you want to use Trend Radar. Production rendering allows three completed attempts per storyboard by default; set `AYE_MAX_PRODUCTION_ATTEMPTS` to an integer from 1 to 10 to adjust this cap. Then run:
 
 ```sh
 docker compose up --build

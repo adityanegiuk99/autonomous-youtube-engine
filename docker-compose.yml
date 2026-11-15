@@ -21,6 +21,7 @@ services:
       AYE_CORS_ORIGINS: http://localhost:3000
       AYE_API_TOKEN: ${AYE_API_TOKEN:?Set AYE_API_TOKEN in the root .env file}
       AYE_RSS_FEED_URLS: ${AYE_RSS_FEED_URLS:-}
+      AYE_MAX_PRODUCTION_ATTEMPTS: ${AYE_MAX_PRODUCTION_ATTEMPTS:-3}
       AYE_MEDIA_DIR: /data/media
     ports:
       - "127.0.0.1:8000:8000"

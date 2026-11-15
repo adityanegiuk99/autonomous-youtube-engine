@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session
 from app.config import get_settings
 from app.content_hashing import production_content_hash
 from app.database import get_db
-from app.models import Approval, ContentIdea, MediaAsset, RenderedVideo, ScriptVersion, StoryboardVersion, utc_now
+from app.models import Approval, ContentIdea, MediaAsset, RenderedVideo, ScriptVersion, StoryboardVersion, WorkflowEvent, utc_now
 from app.production.preview import render_silent_preview
 from app.production.render import render_production
 from app.security import require_api_token
@@ -195,6 +195,19 @@ def render_final_video(idea_id: UUID, response: Response, storyboard_version_id:
             response.status_code = 200
             return _video_read(previous)
 
+    attempt_events = db.scalars(select(WorkflowEvent).where(
+        WorkflowEvent.content_idea_id == idea_id,
+        WorkflowEvent.event_type.in_(("production_failed", "production_rendered")),
+    )).all()
+    completed_attempts = sum(
+        1 for event in attempt_events
+        if event.metadata_json.get("storyboard_version_id") == str(storyboard_version_id)
+    )
+    if completed_attempts >= settings.max_production_attempts:
+        raise HTTPException(status_code=409,
+                            detail=f"This storyboard reached the {settings.max_production_attempts}-attempt render limit. Revise the storyboard or its media inputs before trying again.")
+    attempt_number = completed_attempts + 1
+
     video_id = uuid4()
     try:
         result = render_production(storyboard.scenes, assets, video_id, media_dir,
@@ -206,6 +219,8 @@ def render_final_video(idea_id: UUID, response: Response, storyboard_version_id:
         record_workflow_event(db, idea.id, idea.status, "production_failed",
                               "Production render failed; correct the source assets or rendering configuration before retrying",
                               {"failure_class": "input_validation" if isinstance(exc, ValueError) else "render_tool_or_storage",
+                               "storyboard_version_id": str(storyboard_version_id),
+                               "attempt_number": attempt_number,
                                "partial_output_cleanup_succeeded": cleanup_succeeded},
                               previous_state=previous_state, actor="system")
         try:
@@ -228,7 +243,9 @@ def render_final_video(idea_id: UUID, response: Response, storyboard_version_id:
     record_workflow_event(db, idea.id, idea.status, "production_rendered",
                           "Production render completed with technical QA",
                           {"video_id": str(video.id), "content_hash": content_hash,
-                           "technical_qa_status": video.qa_report.get("status")},
+                           "technical_qa_status": video.qa_report.get("status"),
+                           "storyboard_version_id": str(storyboard_version_id),
+                           "attempt_number": attempt_number},
                           previous_state=previous_state)
     try:
         db.commit()

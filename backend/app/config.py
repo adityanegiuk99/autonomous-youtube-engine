@@ -9,6 +9,7 @@ class Settings(BaseSettings):
     cors_origins: str = "http://localhost:3000"
     rss_feed_urls: str = ""
     max_feed_bytes: int = Field(default=2_000_000, ge=4096, le=20_000_000)
+    max_production_attempts: int = Field(default=3, ge=1, le=10)
     media_dir: str = "media"
     ffmpeg_binary: str = "ffmpeg"
     ffprobe_binary: str = "ffprobe"
