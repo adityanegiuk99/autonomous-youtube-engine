@@ -82,6 +82,7 @@ class ScriptVersion(Base):
     content_idea_id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), ForeignKey("content_ideas.id", ondelete="CASCADE"), nullable=False, index=True)
     version: Mapped[int] = mapped_column(nullable=False)
     body: Mapped[str] = mapped_column(Text, nullable=False)
+    source_references: Mapped[list[dict]] = mapped_column(JSON, nullable=False, default=list, server_default=text("'[]'"))
     content_hash: Mapped[str] = mapped_column(String(64), nullable=False)
     origin: Mapped[str] = mapped_column(String(24), nullable=False, default="human")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utc_now)

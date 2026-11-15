@@ -27,7 +27,7 @@ Source packs preserve RSS metadata and URLs but do not verify factual claims. Ma
 | GET | `/ideas?channel_id=&limit=50` | List ranked opportunities |
 | POST | `/ideas` | Create an idea with explicit human estimates; trend velocity comes from linked RSS item |
 | GET | `/ideas/{id}/scripts` | List immutable script versions |
-| POST | `/ideas/{id}/scripts` | Save a human-authored script version and content hash |
+| POST | `/ideas/{id}/scripts` | Save a human-authored script version, optionally snapshotting same-trend manual dossiers and their citations into its content hash |
 | GET | `/ideas/{id}/storyboards` | List storyboard versions |
 | POST | `/ideas/{id}/storyboards` | Save scenes linked to an exact script version and content hash |
 | POST | `/ideas/{id}/render-preview?storyboard_version_id=` | Render a silent graphic animatic preview with FFmpeg |
@@ -62,6 +62,8 @@ Source packs preserve RSS metadata and URLs but do not verify factual claims. Ma
 | GET | `/dashboard/summary` | Return persisted channel, trend, idea, and render summary counts with recent items |
 
 The opportunity score uses the blueprint's weighted formula. The RSS heuristic is used as the trend-velocity input, and engagement, audience relevance, originality, and research quality are user estimates. Script and storyboard endpoints save human input; they do not claim AI generation.
+
+Script requests may include up to 20 `research_document_ids` and at most 500 KB of combined dossier snapshots; every ID must be a manual dossier for the trend linked to that idea. The script version stores an immutable snapshot of each dossier and its citations, and the script hash covers both body and snapshots. That hash flows into production approval fingerprints through the exact script version. This preserves provenance without asserting that citations or claims are correct.
 
 Preview rendering creates scene cards from storyboard text and exports a silent MP4. Production renders use the blueprint's target sizes: 1080×1920 for Shorts and 1920×1080 for long-form. They require a rights-attested image and audio asset for every scene, use scene-level subtitle overlays, generate a thumbnail and scene-timed WebVTT sidecar, and check MP4/H.264/AAC, resolution, duration, captions, and source-file integrity. WebVTT cue timing follows storyboard scene durations; it is not speech-recognition or word-level synchronization. Human approval requires four review confirmations, checks that source/render/caption files and version hashes still match, and rejects stale script/storyboard versions. Technical QA does not verify editorial claims or the truth of user-supplied license declarations. Approval is not YouTube publish authorization. Files are stored in the `aye_media` Docker volume.
 

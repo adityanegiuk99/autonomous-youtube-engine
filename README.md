@@ -34,6 +34,8 @@ Configure `AYE_RSS_FEED_URLS` as a comma-separated list of trusted HTTPS feeds b
 
 Trend Radar can save a manual evidence dossier with a claim, HTTPS citation, and human assessment. The citation is not fetched, and AYE does not independently verify the claim or source.
 
+In Video Studio, scripts can cite saved dossiers from their linked trend. Each script version snapshots the selected dossier content and citations into its content hash; later production approvals therefore fingerprint the evidence snapshot alongside the script. This supports provenance review but does not validate source accuracy.
+
 Set `AYE_RSS_FEED_URLS` in root `.env` for Docker Compose, or in `backend/.env` when running the API directly. Opportunity scoring uses the blueprint's weights, but only the RSS score is automated; other factors are supplied as human estimates. Script and storyboard records are human-authored versions, not generated output.
 
 The animatic endpoint creates silent text cards. Production rendering outputs 1080×1920 Shorts or 1920×1080 long-form from rights-attested user-uploaded images and voice audio, adds scene-level subtitle overlays, a downloadable scene-timed WebVTT caption sidecar, and a thumbnail, then performs technical container QA. Caption cue timing follows storyboard scenes rather than word-level speech alignment. The approval endpoint binds a human decision to the rendered and source hashes and requires review confirmations. It does not independently verify content claims or license terms and is not YouTube publish authorization.

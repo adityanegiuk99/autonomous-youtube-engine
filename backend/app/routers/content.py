@@ -9,16 +9,18 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.models import ContentIdea, MediaAsset, ScriptVersion, StoryboardVersion, utc_now
+from app.models import ContentIdea, MediaAsset, ResearchDocument, ScriptVersion, StoryboardVersion, utc_now
 from app.security import require_api_token
 from app.workflows import record_workflow_event
 
 router = APIRouter(prefix="/ideas", tags=["content"], dependencies=[Depends(require_api_token)])
+MAX_RESEARCH_SNAPSHOT_BYTES = 500_000
 
 
 class ScriptCreate(BaseModel):
     body: str = Field(min_length=1, max_length=100_000)
     origin: str = Field(default="human", pattern="^human$")
+    research_document_ids: list[UUID] = Field(default_factory=list, max_length=20)
 
 
 class ScriptRead(BaseModel):
@@ -26,6 +28,7 @@ class ScriptRead(BaseModel):
     content_idea_id: UUID
     version: int
     body: str
+    source_references: list[dict]
     content_hash: str
     origin: str
     created_at: datetime
@@ -72,17 +75,43 @@ def create_script(idea_id: UUID, payload: ScriptCreate, db: Session = Depends(ge
     idea = db.scalar(select(ContentIdea).where(ContentIdea.id == idea_id).with_for_update())
     if idea is None:
         raise HTTPException(status_code=404, detail="Content idea not found")
+    if payload.research_document_ids and idea.trend_item_id is None:
+        raise HTTPException(status_code=422, detail="Research dossiers can only be linked to ideas with a trend item")
+    source_references: list[dict] = []
+    if payload.research_document_ids:
+        if len(set(payload.research_document_ids)) != len(payload.research_document_ids):
+            raise HTTPException(status_code=422, detail="Research dossier IDs must be unique")
+        documents = db.scalars(select(ResearchDocument).where(
+            ResearchDocument.id.in_(payload.research_document_ids),
+            ResearchDocument.trend_item_id == idea.trend_item_id,
+            ResearchDocument.document_type == "manual_research_dossier",
+        )).all()
+        by_id = {document.id: document for document in documents}
+        if len(by_id) != len(payload.research_document_ids):
+            raise HTTPException(status_code=422, detail="Every linked dossier must belong to the idea's trend and be a manual research dossier")
+        source_references = [
+            {"research_document_id": str(document.id), "version": document.version,
+             "content_hash": document.content_hash, "content": document.content}
+            for document in (by_id[document_id] for document_id in payload.research_document_ids)
+        ]
+        if len(json.dumps(source_references, separators=(",", ":"), ensure_ascii=False).encode("utf-8")) > MAX_RESEARCH_SNAPSHOT_BYTES:
+            raise HTTPException(status_code=413, detail="Selected dossier snapshots exceed 500 KB; select fewer or smaller dossiers")
     version = (db.scalar(select(func.max(ScriptVersion.version)).where(ScriptVersion.content_idea_id == idea_id)) or 0) + 1
-    content_hash = hashlib.sha256(payload.body.encode("utf-8")).hexdigest()
+    hash_payload = json.dumps({"body": payload.body, "source_references": source_references},
+                              sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+    content_hash = hashlib.sha256(hash_payload.encode("utf-8")).hexdigest()
     script = ScriptVersion(content_idea_id=idea_id, version=version, body=payload.body,
-                           content_hash=content_hash, origin=payload.origin, created_at=utc_now())
+                           source_references=source_references, content_hash=content_hash,
+                           origin=payload.origin, created_at=utc_now())
     db.add(script)
     db.flush()
     previous_state = idea.status
     idea.status = "SCRIPT_READY"
     record_workflow_event(db, idea.id, idea.status, "script_saved", "Human-authored script version saved",
                           {"script_version_id": str(script.id), "version": version,
-                           "content_hash": content_hash}, previous_state=previous_state)
+                           "content_hash": content_hash,
+                           "research_document_ids": [item["research_document_id"] for item in source_references]},
+                          previous_state=previous_state)
     db.commit()
     db.refresh(script)
     return script

@@ -7,11 +7,13 @@ The attached product blueprint defines the destination. This repository starts w
 | 1. Foundation | FastAPI, Next.js shell, PostgreSQL development service, configuration, channel management | Partial: local bearer token and channel CRUD UI; multi-user identity remains |
 | 2. Trend intelligence | RSS/provider adapters, normalization, deduplication, scoring, Trend Radar | In progress: RSS adapter and UI |
 | 3. Research and strategy | sourced dossiers, claim extraction, opportunity scoring and routing | Partial: RSS source packs, manually authored source-linked claim dossiers and assessments, opportunity scoring, manual channel routing; automated claim extraction/verification pending provider |
-| 4. Content generation | versioned scripts, formats, storyboard editor | Partial: versioned human script/storyboard API and Studio UI; AI generation pending provider |
+| 4. Content generation | versioned scripts, formats, storyboard editor | Partial: versioned human script/storyboard API and Studio UI; scripts can attach immutable source dossier snapshots whose hashes flow into production approval; AI generation pending provider |
 | 5. Video production | voice, licensed visuals, FFmpeg, captions, thumbnails, QA | Partial: rights-attested user media, PostgreSQL-backed FFmpeg worker queue, blueprint-target 1080p output, scene captions plus WebVTT sidecars, thumbnail, technical QA; no TTS/stock integration or word-level caption sync |
 | 6. Publishing | OAuth, channel verification, human approval, resumable private-first upload | Partial: exact-version human approval and local private-only schedule records; OAuth/upload not started |
 | 7. Analytics and learning | snapshots, comparisons, evidence-backed recommendations | Partial: normalized CSV import, sample-aware descriptions, and human-managed control/treatment experiment tracking; live API pending OAuth |
 | 8. Integration audit | operational security, recovery, costs, integration verification | In progress: persistent Approval Center, cautious analytics learning hypotheses, workflow event history, PostgreSQL-backed production queue, replay guard, durable render attempt records with stale-attempt recovery, worker liveness heartbeats, configurable per-storyboard attempt ceiling, measured local render resource dashboard, read-only media integrity audit, and operator recovery runbook; full audit pending |
+
+Video Studio can attach up to 20 same-trend manual dossier versions to a script. Each script version snapshots the selected evidence and includes it in its content hash, which is then included in production approval fingerprints. This carries citation provenance downstream without independently verifying claim accuracy.
 
 ## Phase 1 exit criteria
 
