@@ -6,7 +6,7 @@ export default function Home() {
       <aside className="sidebar">
         <div className="brand"><span className="brand-mark">A</span><span>AYE<span className="brand-sub">STUDIO</span></span></div>
         <p className="nav-label">WORKSPACE</p>
-        <nav>{sections.map((section, index) => <a className={index === 0 ? "nav-item active" : "nav-item"} href={section === "Channels" ? "/channels" : section === "Trend Radar" ? "/trends" : section === "Content Pipeline" ? "/ideas" : section === "Video Studio" ? "/studio" : section === "Analytics" ? "/analytics" : "#"} key={section}><span className="nav-icon">{["⌂", "▣", "◉", "▤", "▶", "✓", "↗", "▥", "✧"][index]}</span>{section}</a>)}</nav>
+        <nav>{sections.map((section, index) => <a className={index === 0 ? "nav-item active" : "nav-item"} href={section === "Channels" ? "/channels" : section === "Trend Radar" ? "/trends" : section === "Content Pipeline" ? "/ideas" : section === "Video Studio" ? "/studio" : section === "Approval Center" ? "/approvals" : section === "Analytics" ? "/analytics" : "#"} key={section}><span className="nav-icon">{["⌂", "▣", "◉", "▤", "▶", "✓", "↗", "▥", "✧"][index]}</span>{section}</a>)}</nav>
         <div className="sidebar-bottom"><div className="avatar">A</div><div><strong>Local workspace</strong><small>Foundation setup</small></div></div>
       </aside>
       <section className="content">
