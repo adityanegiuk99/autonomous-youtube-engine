@@ -59,6 +59,24 @@ class AnalyticsSummary(BaseModel):
     interpretation: str
 
 
+class LearningSignal(BaseModel):
+    metric: str
+    top_view_group_median: float
+    lower_view_group_median: float
+    difference_percent: float | None
+    direction: str
+
+
+class LearningInsights(BaseModel):
+    channel_id: UUID
+    video_count: int
+    evidence_strength: str
+    basis: str
+    caveat: str
+    signals: list[LearningSignal]
+    suggested_review: str | None
+
+
 def _parse_row(row: dict[str, str], line_number: int) -> tuple[str, datetime, dict]:
     try:
         video_id = (row.get("video_id") or "").strip()
@@ -192,3 +210,48 @@ def channel_summary(channel_id: UUID, db: Session = Depends(get_db)):
                             watch_time_minutes_total=round(watch_time_total, 2),
                             average_view_duration_seconds=round(average_view_duration, 2) if average_view_duration is not None else None,
                             top_videos=top_videos, interpretation=interpretation)
+
+
+@router.get("/channels/{channel_id}/insights", response_model=LearningInsights)
+def channel_learning_insights(channel_id: UUID, db: Session = Depends(get_db)):
+    if db.get(Channel, channel_id) is None:
+        raise HTTPException(status_code=404, detail="Channel configuration not found")
+    snapshots = db.scalars(select(AnalyticsSnapshot).where(AnalyticsSnapshot.channel_id == channel_id)
+                           .order_by(AnalyticsSnapshot.collected_at.asc())).all()
+    latest_by_video: dict[str, AnalyticsSnapshot] = {}
+    for snapshot in snapshots:
+        current = latest_by_video.get(snapshot.external_video_id)
+        if current is None or snapshot.collected_at > current.collected_at:
+            latest_by_video[snapshot.external_video_id] = snapshot
+    latest = list(latest_by_video.values())
+    count = len(latest)
+    strength = "insufficient" if count < 10 else "low" if count < 30 else "moderate"
+    caveat = ("Exploratory description of user-imported cumulative snapshots. It is not causal or predictive and does not adjust for video age, format, topic, or promotion. Evidence strength reflects sample count only."
+              if count >= 10 else
+              "Fewer than 10 videos are available. This sample is too small for a useful comparison; no recommendation is generated.")
+    if count < 10:
+        return LearningInsights(channel_id=channel_id, video_count=count, evidence_strength=strength,
+                                basis="latest snapshot per imported video", caveat=caveat, signals=[],
+                                suggested_review=None)
+
+    ranked = sorted(latest, key=lambda item: item.metrics["views"], reverse=True)
+    group_size = max(2, math.ceil(count * 0.25))
+    top_group, lower_group = ranked[:group_size], ranked[-group_size:]
+    signals = []
+    for key, label in (("click_through_rate_percent", "click-through rate"),
+                        ("average_view_duration_seconds", "average view duration")):
+        top_median = statistics.median(item.metrics[key] for item in top_group)
+        lower_median = statistics.median(item.metrics[key] for item in lower_group)
+        if top_median == lower_median:
+            continue
+        difference = (round((top_median - lower_median) / lower_median * 100, 1)
+                      if lower_median > 0 else None)
+        signals.append(LearningSignal(metric=label, top_view_group_median=round(top_median, 2),
+                                      lower_view_group_median=round(lower_median, 2),
+                                      difference_percent=difference,
+                                      direction="higher" if top_median > lower_median else "lower"))
+    suggested_review = ("Review the titles, topics, hooks, formats, and publish timing in both groups. If you find a repeatable editorial pattern, record one controlled experiment and compare it with future imports. Treat these signals as hypotheses, not instructions to change strategy."
+                       if signals else None)
+    return LearningInsights(channel_id=channel_id, video_count=count, evidence_strength=strength,
+                            basis=f"Latest snapshot per video; compared the {group_size} highest-view and {group_size} lowest-view videos",
+                            caveat=caveat, signals=signals, suggested_review=suggested_review)

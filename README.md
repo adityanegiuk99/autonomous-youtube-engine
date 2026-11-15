@@ -1,6 +1,6 @@
 # Autonomous YouTube Engine (AYE)
 
-AYE is planned as a human-approved, multi-channel content operations platform. The repository is progressing through **Phases 1–8**. It includes FastAPI, PostgreSQL migrations, channel CRUD, RSS discovery/source packs, opportunity scoring, versioned human-authored scripts/storyboards, media-backed FFmpeg rendering, technical QA, exact-version human approval, a persistent Approval Center, and sample-aware CSV analytics imports.
+AYE is planned as a human-approved, multi-channel content operations platform. The repository is progressing through **Phases 1–8**. It includes FastAPI, PostgreSQL migrations, channel CRUD, RSS discovery/source packs, opportunity scoring, versioned human-authored scripts/storyboards, media-backed FFmpeg rendering, technical QA, exact-version human approval, a persistent Approval Center, normalized CSV analytics imports, and sample-count-labeled exploratory learning hypotheses.
 
 ## Run locally with Docker
 
@@ -32,7 +32,7 @@ Set `AYE_RSS_FEED_URLS` in root `.env` for Docker Compose, or in `backend/.env` 
 
 The animatic endpoint creates silent text cards. Production rendering uses rights-attested user-uploaded images and voice audio, adds scene-level subtitle overlays and a thumbnail, and performs technical container QA. The approval endpoint binds a human decision to the rendered and source hashes and requires review confirmations. It does not independently verify content claims or license terms and is not YouTube publish authorization.
 
-The Analytics page accepts normalized cumulative CSV snapshots and summarizes the latest row per video. It is not connected to YouTube Analytics and only emits descriptive summaries, with a small-sample warning.
+The Analytics page accepts normalized cumulative CSV snapshots and summarizes the latest row per video. With at least 10 videos, it compares CTR and average view duration across the highest and lowest view quartiles to suggest editorial review hypotheses. These comparisons are exploratory, not adjusted for age/format/topic/promotion, and do not establish causality. The page is not connected to YouTube Analytics.
 
 ## Current limits
 
