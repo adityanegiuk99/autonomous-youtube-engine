@@ -54,6 +54,8 @@ Analytics CSV imports require the exact header from `/analytics/csv-template`. C
 
 Workflow events are appended in the same transaction as idea creation, script/storyboard saves, renders, and human approval decisions. They retain previous/current state, actor label, event type, reason, and safe structured metadata. Existing ideas are not backfilled; their response falls back to the current idea status until new events are recorded. This is an audit timeline, not a resumable job queue; bounded retries and workflow checkpoints remain unimplemented.
 
+Sequential production render replays reuse an intact, passing render for the same storyboard and media inputs when it has no final decision, returning HTTP 200. If that exact render already has an approval decision, another render request returns 409 so a new video row cannot silently create a second decision for the same render. Missing or changed files are never reused. Concurrent requests are not serialized yet; a durable render-job queue/lock remains future work.
+
 ## Trend intelligence
 
 | Method | Path | Behavior |

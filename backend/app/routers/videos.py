@@ -1,17 +1,18 @@
+import hashlib
 from datetime import datetime
 from pathlib import Path
 from uuid import UUID, uuid4
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, ConfigDict
-from sqlalchemy import select
+from sqlalchemy import desc, select
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
 from app.content_hashing import production_content_hash
 from app.database import get_db
-from app.models import ContentIdea, MediaAsset, RenderedVideo, ScriptVersion, StoryboardVersion, utc_now
+from app.models import Approval, ContentIdea, MediaAsset, RenderedVideo, ScriptVersion, StoryboardVersion, utc_now
 from app.production.preview import render_silent_preview
 from app.production.render import render_production
 from app.security import require_api_token
@@ -36,6 +37,37 @@ class VideoRead(BaseModel):
     video_type: str = "animatic"
     qa_report: dict | None = None
     model_config = ConfigDict(from_attributes=True)
+
+
+def _video_read(video: RenderedVideo) -> VideoRead:
+    result = VideoRead.model_validate(video)
+    result.preview_url = f"/api/v1/videos/{video.id}/file"
+    result.thumbnail_url = f"/api/v1/videos/{video.id}/thumbnail" if video.thumbnail_key else None
+    return result
+
+
+def _sha256_file(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as file:
+        for chunk in iter(lambda: file.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _file_matches(path: Path, root: Path, checksum: str) -> bool:
+    if path.parent != root or not path.is_file():
+        return False
+    try:
+        return _sha256_file(path) == checksum
+    except OSError:
+        return False
+
+
+def _media_manifest(assets: dict[UUID, MediaAsset]) -> list[dict]:
+    return [{"asset_id": str(asset.id), "asset_type": asset.asset_type,
+             "license_type": asset.license_type, "source_url": asset.source_url,
+             "checksum": asset.checksum, "rights_confirmed": asset.rights_confirmed}
+            for asset in assets.values()]
 
 
 @router.post("/ideas/{idea_id}/render-preview", response_model=VideoRead, status_code=201)
@@ -67,8 +99,10 @@ def render_preview(idea_id: UUID, storyboard_version_id: UUID = Query(...), db: 
     return result
 
 
-@router.post("/ideas/{idea_id}/render-production", response_model=VideoRead, status_code=201)
-def render_final_video(idea_id: UUID, storyboard_version_id: UUID = Query(...), db: Session = Depends(get_db)):
+@router.post("/ideas/{idea_id}/render-production", response_model=VideoRead, status_code=201,
+             responses={200: {"model": VideoRead, "description": "Idempotent replay of an intact QA-passed render"},
+                        409: {"description": "The exact content already has a human decision"}})
+def render_final_video(idea_id: UUID, response: Response, storyboard_version_id: UUID = Query(...), db: Session = Depends(get_db)):
     idea = db.get(ContentIdea, idea_id)
     if idea is None:
         raise HTTPException(status_code=404, detail="Content idea not found")
@@ -91,16 +125,44 @@ def render_final_video(idea_id: UUID, storyboard_version_id: UUID = Query(...), 
             raise HTTPException(status_code=422, detail="Non-owned storyboard media needs source attribution")
 
     settings = get_settings()
-    video_id = uuid4()
     media_dir = Path(settings.media_dir).resolve()
+    script = db.get(ScriptVersion, storyboard.script_version_id)
+    if script is None:
+        raise HTTPException(status_code=409, detail="Storyboard script version is missing")
+
+    manifest = _media_manifest(assets)
+    previous_renders = db.scalars(select(RenderedVideo).where(
+        RenderedVideo.content_idea_id == idea_id,
+        RenderedVideo.storyboard_version_id == storyboard_version_id,
+        RenderedVideo.video_type == "production",
+    ).order_by(desc(RenderedVideo.created_at))).all()
+    for previous in previous_renders:
+        if previous.qa_report is None or previous.qa_report.get("status") != "TECHNICAL_QA_PASSED" or not previous.content_hash:
+            continue
+        same_content = production_content_hash(idea, script, storyboard, manifest, previous.checksum)
+        if same_content != previous.content_hash:
+            continue
+        prior_decision = db.scalar(select(Approval.id).where(Approval.video_id == previous.id).limit(1))
+        if prior_decision is not None:
+            raise HTTPException(status_code=409,
+                                detail="This exact storyboard and media version already has a human decision. Revise the content before rendering another review version.")
+        video_path = (media_dir / previous.storage_key).resolve()
+        thumbnail_path = (media_dir / previous.thumbnail_key).resolve() if previous.thumbnail_key else None
+        sources_intact = all(
+            _file_matches((media_dir / asset.storage_key).resolve(), media_dir, asset.checksum)
+            for asset in assets.values()
+        )
+        if (sources_intact and _file_matches(video_path, media_dir, previous.checksum)
+                and thumbnail_path is not None and thumbnail_path.parent == media_dir and thumbnail_path.is_file()):
+            response.status_code = 200
+            return _video_read(previous)
+
+    video_id = uuid4()
     try:
         result = render_production(storyboard.scenes, assets, video_id, media_dir,
                                    settings.ffmpeg_binary, settings.ffprobe_binary, idea.format)
     except (RuntimeError, ValueError) as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
-    script = db.get(ScriptVersion, storyboard.script_version_id)
-    if script is None:
-        raise HTTPException(status_code=409, detail="Storyboard script version is missing")
     content_hash = production_content_hash(idea, script, storyboard, result["media_manifest"], result["checksum"])
     video = RenderedVideo(id=video_id, content_idea_id=idea_id, storyboard_version_id=storyboard_version_id,
                           storage_key=result["storage_key"], checksum=result["checksum"],
@@ -125,10 +187,7 @@ def render_final_video(idea_id: UUID, storyboard_version_id: UUID = Query(...), 
         (media_dir / result["storage_key"]).unlink(missing_ok=True)
         (media_dir / result["thumbnail_key"]).unlink(missing_ok=True)
         raise
-    response = VideoRead.model_validate(video)
-    response.preview_url = f"/api/v1/videos/{video.id}/file"
-    response.thumbnail_url = f"/api/v1/videos/{video.id}/thumbnail"
-    return response
+    return _video_read(video)
 
 
 @router.get("/videos/{video_id}", response_model=VideoRead)
