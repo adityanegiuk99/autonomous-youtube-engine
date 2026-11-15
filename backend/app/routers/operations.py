@@ -39,7 +39,7 @@ class RenderUsageSummary(BaseModel):
 
 class MediaIntegrityIssue(BaseModel):
     category: Literal["missing", "checksum_mismatch", "unsafe_path", "unreadable", "orphan"]
-    record_type: Literal["media_asset", "video", "thumbnail", "file"]
+    record_type: Literal["media_asset", "video", "thumbnail", "captions", "file"]
     record_id: UUID | None = None
     storage_key: str
 
@@ -154,7 +154,7 @@ def media_integrity(db: Session = Depends(get_db)):
     referenced_keys: set[str] = set()
     checked = 0
 
-    def inspect(storage_key: str, record_type: Literal["media_asset", "video", "thumbnail"],
+    def inspect(storage_key: str, record_type: Literal["media_asset", "video", "thumbnail", "captions"],
                 record_id: UUID | None, checksum: str | None = None) -> None:
         nonlocal checked
         referenced_keys.add(storage_key)
@@ -185,6 +185,8 @@ def media_integrity(db: Session = Depends(get_db)):
         inspect(video.storage_key, "video", video.id, video.checksum)
         if video.thumbnail_key:
             inspect(video.thumbnail_key, "thumbnail", video.id)
+        if video.captions_key:
+            inspect(video.captions_key, "captions", video.id, video.captions_checksum)
 
     orphan_files: list[str] = []
     orphan_count = 0
@@ -278,7 +280,7 @@ def recover_production_attempt(attempt_id: UUID, db: Session = Depends(get_db)):
 
     media_root = Path(settings.media_dir).resolve()
     cleanup_succeeded = True
-    for key in (f"{attempt.id}.mp4", f"{attempt.id}-thumb.jpg"):
+    for key in (f"{attempt.id}.mp4", f"{attempt.id}-thumb.jpg", f"{attempt.id}-captions.vtt"):
         path = media_root / key
         if path.parent.resolve() != media_root:
             cleanup_succeeded = False

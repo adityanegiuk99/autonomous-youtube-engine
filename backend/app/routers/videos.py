@@ -35,6 +35,7 @@ class VideoRead(BaseModel):
     created_at: datetime
     preview_url: str = ""
     thumbnail_url: str | None = None
+    captions_url: str | None = None
     video_type: str = "animatic"
     qa_report: dict | None = None
     model_config = ConfigDict(from_attributes=True)
@@ -52,6 +53,7 @@ def _video_read(video: RenderedVideo) -> VideoRead:
     result = VideoRead.model_validate(video)
     result.preview_url = f"/api/v1/videos/{video.id}/file"
     result.thumbnail_url = f"/api/v1/videos/{video.id}/thumbnail" if video.thumbnail_key else None
+    result.captions_url = f"/api/v1/videos/{video.id}/captions" if video.captions_key else None
     return result
 
 
@@ -125,6 +127,7 @@ def render_preview(idea_id: UUID, storyboard_version_id: UUID = Query(...), db: 
     result = VideoRead.model_validate(video)
     result.preview_url = f"/api/v1/videos/{video.id}/file"
     result.thumbnail_url = f"/api/v1/videos/{video.id}/thumbnail" if video.thumbnail_key else None
+    result.captions_url = f"/api/v1/videos/{video.id}/captions" if video.captions_key else None
     return result
 
 
@@ -156,12 +159,15 @@ def render_final_video(idea_id: UUID, response: Response, storyboard_version_id:
                                 detail="This exact storyboard and media version already has a human decision. Revise the content before rendering another review version.")
         video_path = (media_dir / previous.storage_key).resolve()
         thumbnail_path = (media_dir / previous.thumbnail_key).resolve() if previous.thumbnail_key else None
+        captions_path = (media_dir / previous.captions_key).resolve() if previous.captions_key else None
         sources_intact = all(
             _file_matches((media_dir / asset.storage_key).resolve(), media_dir, asset.checksum)
             for asset in assets.values()
         )
         if (sources_intact and _file_matches(video_path, media_dir, previous.checksum)
-                and thumbnail_path is not None and thumbnail_path.parent == media_dir and thumbnail_path.is_file()):
+                and thumbnail_path is not None and thumbnail_path.parent == media_dir and thumbnail_path.is_file()
+                and captions_path is not None and previous.captions_checksum is not None
+                and _file_matches(captions_path, media_dir, previous.captions_checksum)):
             response.status_code = 200
             return _video_read(previous)
 
@@ -234,8 +240,11 @@ def queue_production_render(idea_id: UUID, response: Response,
                              for asset in context.assets.values())
         video_path = (media_root / previous.storage_key).resolve()
         thumb_path = (media_root / previous.thumbnail_key).resolve() if previous.thumbnail_key else None
+        captions_path = (media_root / previous.captions_key).resolve() if previous.captions_key else None
         if (intact_sources and _file_matches(video_path, media_root, previous.checksum)
-                and thumb_path is not None and thumb_path.parent == media_root and thumb_path.is_file()):
+                and thumb_path is not None and thumb_path.parent == media_root and thumb_path.is_file()
+                and captions_path is not None and previous.captions_checksum is not None
+                and _file_matches(captions_path, media_root, previous.captions_checksum)):
             response.status_code = 200
             return ProductionQueueResult(attempt_id=None, status="completed", video_id=previous.id,
                                          reused=True, message="Reused the existing intact QA-passed render")
@@ -285,6 +294,7 @@ def get_video(video_id: UUID, db: Session = Depends(get_db)):
     result = VideoRead.model_validate(video)
     result.preview_url = f"/api/v1/videos/{video.id}/file"
     result.thumbnail_url = f"/api/v1/videos/{video.id}/thumbnail" if video.thumbnail_key else None
+    result.captions_url = f"/api/v1/videos/{video.id}/captions" if video.captions_key else None
     return result
 
 
@@ -312,6 +322,18 @@ def download_thumbnail(video_id: UUID, db: Session = Depends(get_db)):
     return FileResponse(path, media_type="image/jpeg", filename=f"aye-thumbnail-{video.id}.jpg")
 
 
+@router.get("/videos/{video_id}/captions")
+def download_captions(video_id: UUID, db: Session = Depends(get_db)):
+    video = db.get(RenderedVideo, video_id)
+    if video is None or not video.captions_key:
+        raise HTTPException(status_code=404, detail="Captions not found")
+    root = Path(get_settings().media_dir).resolve()
+    path = (root / video.captions_key).resolve()
+    if path.parent != root or not path.is_file():
+        raise HTTPException(status_code=404, detail="Captions file not found")
+    return FileResponse(path, media_type="text/vtt", filename=f"aye-captions-{video.id}.vtt")
+
+
 @router.get("/videos", response_model=list[VideoRead])
 def list_videos(idea_id: UUID | None = None, limit: int = Query(default=50, ge=1, le=200), db: Session = Depends(get_db)):
     query = select(RenderedVideo).order_by(RenderedVideo.created_at.desc()).limit(limit)
@@ -322,5 +344,6 @@ def list_videos(idea_id: UUID | None = None, limit: int = Query(default=50, ge=1
         result = VideoRead.model_validate(video)
         result.preview_url = f"/api/v1/videos/{video.id}/file"
         result.thumbnail_url = f"/api/v1/videos/{video.id}/thumbnail" if video.thumbnail_key else None
+        result.captions_url = f"/api/v1/videos/{video.id}/captions" if video.captions_key else None
         results.append(result)
     return results

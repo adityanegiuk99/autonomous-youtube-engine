@@ -131,6 +131,8 @@ class RenderedVideo(Base):
     status: Mapped[str] = mapped_column(String(32), nullable=False, default="PREVIEW_RENDERED")
     video_type: Mapped[str] = mapped_column(String(24), nullable=False, default="animatic")
     thumbnail_key: Mapped[str | None] = mapped_column(String(80))
+    captions_key: Mapped[str | None] = mapped_column(String(96))
+    captions_checksum: Mapped[str | None] = mapped_column(String(64))
     media_manifest: Mapped[list[dict] | None] = mapped_column(JSON)
     qa_report: Mapped[dict | None] = mapped_column(JSON)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utc_now)

@@ -41,6 +41,7 @@ Source packs preserve RSS metadata and URLs but do not verify factual claims. AI
 | GET | `/videos?idea_id=&limit=50` | List rendered previews |
 | GET | `/videos/{id}` | Retrieve preview metadata |
 | GET | `/videos/{id}/file` | Download the MP4 preview |
+| GET | `/videos/{id}/captions` | Download the generated scene-timed WebVTT caption sidecar |
 | GET | `/workflows/ideas/{idea_id}/events?limit=100` | Read the recorded content workflow timeline (1–500 recent events) |
 | GET | `/analytics/csv-template` | Download the normalized analytics CSV header |
 | POST | `/analytics/import?channel_id=` | Import cumulative CSV snapshots for a configured channel |
@@ -62,7 +63,7 @@ Source packs preserve RSS metadata and URLs but do not verify factual claims. AI
 
 The opportunity score uses the blueprint's weighted formula. The RSS heuristic is used as the trend-velocity input, and engagement, audience relevance, originality, and research quality are user estimates. Script and storyboard endpoints save human input; they do not claim AI generation.
 
-Preview rendering creates scene cards from storyboard text and exports a silent MP4. Production rendering requires a rights-attested image and audio asset for every scene, uses scene-level subtitle overlays, generates a thumbnail, and checks MP4/H.264/AAC, resolution, duration, and source-file integrity. Human approval requires four review confirmations, checks that source/render files and version hashes still match, and rejects stale script/storyboard versions. Technical QA does not verify editorial claims or the truth of user-supplied license declarations. Approval is not YouTube publish authorization. Files are stored in the `aye_media` Docker volume.
+Preview rendering creates scene cards from storyboard text and exports a silent MP4. Production rendering requires a rights-attested image and audio asset for every scene, uses scene-level subtitle overlays, generates a thumbnail and scene-timed WebVTT sidecar, and checks MP4/H.264/AAC, resolution, duration, captions, and source-file integrity. WebVTT cue timing follows storyboard scene durations; it is not speech-recognition or word-level synchronization. Human approval requires four review confirmations, checks that source/render/caption files and version hashes still match, and rejects stale script/storyboard versions. Technical QA does not verify editorial claims or the truth of user-supplied license declarations. Approval is not YouTube publish authorization. Files are stored in the `aye_media` Docker volume.
 
 Analytics CSV imports require the exact header from `/analytics/csv-template`. CTR is a percentage from 0 to 100; dates must be ISO formatted; each row is a cumulative snapshot for one video/date. Summaries select the latest imported row per video and label small samples. Learning insights compare median CTR and average view duration between the highest-view and lowest-view quartile groups when at least 10 videos are available. Evidence strength is based on sample count only; comparisons are exploratory, do not adjust for video age, format, topic, or promotion, do not imply causation, and never change strategy automatically. No live provider API is connected.
 

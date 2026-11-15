@@ -61,8 +61,9 @@ def _active_content_hash(video: RenderedVideo, idea: ContentIdea, storyboard: St
         raise HTTPException(status_code=409, detail="A newer script or storyboard exists; render and review the latest version")
     if not video.storage_key or not video.checksum:
         raise HTTPException(status_code=409, detail="Rendered file metadata is incomplete")
-    path = (Path(get_settings().media_dir).resolve() / video.storage_key).resolve()
-    if path.parent != Path(get_settings().media_dir).resolve() or not path.is_file():
+    media_root = Path(get_settings().media_dir).resolve()
+    path = (media_root / video.storage_key).resolve()
+    if path.parent != media_root or not path.is_file():
         raise HTTPException(status_code=409, detail="Rendered file is missing")
     digest = hashlib.sha256()
     with path.open("rb") as rendered:
@@ -70,12 +71,23 @@ def _active_content_hash(video: RenderedVideo, idea: ContentIdea, storyboard: St
             digest.update(chunk)
     if digest.hexdigest() != video.checksum:
         raise HTTPException(status_code=409, detail="Rendered file changed after technical QA")
+    if video.captions_key:
+        if not video.captions_checksum:
+            raise HTTPException(status_code=409, detail="Caption file metadata is incomplete")
+        captions_path = (media_root / video.captions_key).resolve()
+        if captions_path.parent != media_root or not captions_path.is_file():
+            raise HTTPException(status_code=409, detail="Caption file is missing")
+        caption_digest = hashlib.sha256()
+        with captions_path.open("rb") as captions_file:
+            for chunk in iter(lambda: captions_file.read(1024 * 1024), b""):
+                caption_digest.update(chunk)
+        if caption_digest.hexdigest() != video.captions_checksum:
+            raise HTTPException(status_code=409, detail="Caption file changed after technical QA")
 
     asset_ids = {UUID(str(scene[field])) for scene in storyboard.scenes for field in ("image_asset_id", "audio_asset_id") if scene.get(field)}
     assets = db.scalars(select(MediaAsset).where(MediaAsset.id.in_(asset_ids))).all() if asset_ids else []
     if len(assets) != len(asset_ids):
         raise HTTPException(status_code=409, detail="A reviewed media asset is missing")
-    media_root = Path(get_settings().media_dir).resolve()
     for asset in assets:
         media_path = (media_root / asset.storage_key).resolve()
         if media_path.parent != media_root or not media_path.is_file():

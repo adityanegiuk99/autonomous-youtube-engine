@@ -82,7 +82,7 @@ def _source_bytes(media_root: Path, assets: dict[UUID, MediaAsset]) -> int:
 
 def _cleanup_attempt(media_root: Path, attempt_id: UUID) -> bool:
     cleaned = True
-    for key in (f"{attempt_id}.mp4", f"{attempt_id}-thumb.jpg"):
+    for key in (f"{attempt_id}.mp4", f"{attempt_id}-thumb.jpg", f"{attempt_id}-captions.vtt"):
         path = media_root / key
         if path.parent.resolve() != media_root:
             cleaned = False
@@ -145,7 +145,8 @@ def execute_production_attempt(db: Session, attempt: ProductionAttempt,
         storage_key=result["storage_key"], checksum=result["checksum"], content_hash=content_hash,
         duration_seconds=result["duration_seconds"], width=result["width"], height=result["height"],
         status=result["qa_report"]["status"], video_type="production",
-        thumbnail_key=result["thumbnail_key"], media_manifest=result["media_manifest"],
+        thumbnail_key=result["thumbnail_key"], captions_key=result["captions_key"],
+        captions_checksum=result["captions_checksum"], media_manifest=result["media_manifest"],
         qa_report=result["qa_report"], created_at=utc_now())
     attempt.status = "completed"
     attempt.finished_at = utc_now()

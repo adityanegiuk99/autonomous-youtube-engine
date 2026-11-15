@@ -1,4 +1,5 @@
 import hashlib
+import html
 import json
 import subprocess
 import tempfile
@@ -74,6 +75,28 @@ def _run(command: list[str], cwd: Path, timeout: int = 120) -> subprocess.Comple
         raise RuntimeError(f"Media processing failed: {exc.stderr[-1200:]}") from exc
 
 
+def _vtt_timestamp(milliseconds: int) -> str:
+    hours, remainder = divmod(milliseconds, 3_600_000)
+    minutes, remainder = divmod(remainder, 60_000)
+    seconds, millis = divmod(remainder, 1_000)
+    return f"{hours:02d}:{minutes:02d}:{seconds:02d}.{millis:03d}"
+
+
+def _webvtt_content(scenes: list[dict]) -> tuple[str, int]:
+    lines = ["WEBVTT", ""]
+    elapsed_ms = 0
+    cue_count = 0
+    for scene in scenes:
+        duration_ms = max(1, round(float(scene["duration_seconds"]) * 1000))
+        text = scene.get("subtitle") or scene.get("voiceover") or ""
+        text = html.escape(" ".join(str(text).split())).replace("--&gt;", "—›")
+        if text:
+            lines.extend((f"{_vtt_timestamp(elapsed_ms)} --> {_vtt_timestamp(elapsed_ms + duration_ms)}", text, ""))
+            cue_count += 1
+        elapsed_ms += duration_ms
+    return "\n".join(lines), cue_count
+
+
 def render_production(scenes: list[dict], assets: dict[UUID, object], video_id: UUID, media_dir: Path,
                       ffmpeg: str, ffprobe: str, aspect: str) -> dict:
     if not scenes or len(scenes) > 50:
@@ -85,8 +108,10 @@ def render_production(scenes: list[dict], assets: dict[UUID, object], video_id: 
     media_dir.mkdir(parents=True, exist_ok=True)
     video_key = f"{video_id}.mp4"
     thumb_key = f"{video_id}-thumb.jpg"
+    captions_key = f"{video_id}-captions.vtt"
     final_path = (media_dir / video_key).resolve()
     thumbnail_path = (media_dir / thumb_key).resolve()
+    captions_path = (media_dir / captions_key).resolve()
     manifest = []
 
     for asset in assets.values():
@@ -137,6 +162,9 @@ def render_production(scenes: list[dict], assets: dict[UUID, object], video_id: 
         _run([ffmpeg, "-hide_banner", "-loglevel", "error", "-y", "-f", "concat", "-safe", "0", "-i",
               str(concat_file), "-c", "copy", "-movflags", "+faststart", str(final_path)], temp_dir, timeout=300)
 
+    vtt, caption_count = _webvtt_content(scenes)
+    captions_path.write_text(vtt, encoding="utf-8", newline="\n")
+
     probe = _run([ffprobe, "-v", "error", "-show_streams", "-show_format", "-of", "json", str(final_path)],
                  media_dir)
     try:
@@ -148,6 +176,7 @@ def render_production(scenes: list[dict], assets: dict[UUID, object], video_id: 
     except (KeyError, StopIteration, TypeError, ValueError, json.JSONDecodeError) as exc:
         final_path.unlink(missing_ok=True)
         thumbnail_path.unlink(missing_ok=True)
+        captions_path.unlink(missing_ok=True)
         raise RuntimeError("Rendered media failed technical inspection") from exc
 
     manifest = list({item["asset_id"]: item for item in manifest}.values())
@@ -158,14 +187,17 @@ def render_production(scenes: list[dict], assets: dict[UUID, object], video_id: 
         "expected_resolution": (int(video_stream.get("width", 0)), int(video_stream.get("height", 0))) == (width, height),
         "duration_matches_storyboard": abs(actual_duration - total_duration) <= max(1.5, total_duration * 0.03),
         "all_assets_rights_confirmed": all(item["rights_confirmed"] for item in manifest),
+        "captions_vtt": captions_path.is_file() and vtt.startswith("WEBVTT") and caption_count > 0,
     }
     qa_report = {"status": "TECHNICAL_QA_PASSED" if all(checks.values()) else "TECHNICAL_QA_FAILED",
                  "checks": checks, "duration_seconds": actual_duration,
-                 "note": "Technical file and supplied asset metadata checks only; editorial accuracy and license terms are not independently verified."}
+                 "note": "Technical file and supplied asset metadata checks only; WebVTT cues follow storyboard scene timing, not word-level speech alignment. Editorial accuracy and license terms are not independently verified."}
     digest = hashlib.sha256()
     with final_path.open("rb") as rendered:
         for chunk in iter(lambda: rendered.read(1024 * 1024), b""):
             digest.update(chunk)
+    caption_digest = hashlib.sha256(captions_path.read_bytes()).hexdigest()
     return {"storage_key": video_key, "thumbnail_key": thumb_key, "checksum": digest.hexdigest(),
+            "captions_key": captions_key, "captions_checksum": caption_digest,
             "duration_seconds": actual_duration, "width": width, "height": height,
             "media_manifest": manifest, "qa_report": qa_report}

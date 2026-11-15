@@ -10,7 +10,7 @@ Agents are bounded capabilities invoked by application workflows. They receive t
 | Channel Strategist | opportunity and channel strategies | destination, format, duration, rationale | workflow validates destination eligibility |
 | Scriptwriter | dossier, format, channel voice | structured script and cited factual claims | versioned content service persists output |
 | Storyboard | approved script version | ordered scenes, timing, visual instructions, subtitles, source attribution | production validates durations and assets |
-| Production | storyboard and licensed assets | render, thumbnail, captions, provenance manifest | QA must pass before approval is offered |
+| Production | storyboard and licensed assets | render, thumbnail, scene-timed WebVTT captions, provenance manifest | QA must pass before approval is offered; caption timing follows scenes, not words |
 | QA | content versions, media, source dossier | checks, findings, pass/fail | critical finding blocks approval/publishing |
 | Publishing | exact approved version, destination, metadata | upload result and provider ID | separate service validates approval and channel auth |
 | Analytics | authorized channel/video IDs and time range | provider metrics with provenance | analytics service stores snapshots |
