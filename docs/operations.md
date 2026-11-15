@@ -52,10 +52,14 @@ The API container applies Alembic migrations at startup. Before updating an inst
 
 The Operations page offers a read-only media audit at `GET /api/v1/operations/media-integrity`. It checks that database-referenced source assets, rendered videos, and thumbnails exist under the configured media directory; it compares source and render checksums where the database stores one. It also lists up to 100 unreferenced files. The audit does not delete or repair anything. Review orphan entries before manual cleanup, since interrupted operations may leave files that still matter to an operator. Run it after a restore or storage move, then open important renders in the Approval Center.
 
+## Background production worker
+
+Docker Compose runs a separate `worker` service. Studio queues a production attempt in PostgreSQL and polls its durable status; the worker claims queued rows with row locking so worker replicas cannot claim the same attempt. `AYE_WORKER_POLL_SECONDS` controls the idle poll interval. API and worker share the `aye_media` volume. The worker waits for database schema startup, but does not provide automatic retries, heartbeats, or resumable FFmpeg checkpoints. A worker crash leaves a running attempt for manual stale recovery.
+
 ## Local publishing schedule
 
 The Publishing page can save and cancel private-only schedule records for an exact, currently approved render. It does not upload or publish content. Cancelling a local entry does not undo an external action because none is attempted. Configure Google OAuth and implement resumable upload and recovery before treating any item as YouTube-scheduled.
 
 ## Recover an interrupted production render
 
-Production render attempts are committed before FFmpeg starts. If the API exits mid-render, the Operations page shows the attempt as running. Once it is older than `AYE_PRODUCTION_STALE_AFTER_SECONDS` (six hours by default), an operator can recover it. Recovery marks that attempt failed and removes its attempt-specific MP4 and thumbnail when possible. It does not resume FFmpeg from a checkpoint. The interrupted attempt counts against `AYE_MAX_PRODUCTION_ATTEMPTS`; inspect the source files and rendering configuration before retrying. If cleanup fails, use the media integrity audit to inspect leftover files.
+Production render attempts are committed before FFmpeg starts. If the worker exits mid-render, the Operations page shows the attempt as running. Once it is older than `AYE_PRODUCTION_STALE_AFTER_SECONDS` (six hours by default), an operator can recover it. Recovery marks that attempt failed and removes its attempt-specific MP4 and thumbnail when possible. It does not resume FFmpeg from a checkpoint. The interrupted attempt counts against `AYE_MAX_PRODUCTION_ATTEMPTS`; inspect the source files and rendering configuration before retrying. If cleanup fails, use the media integrity audit to inspect leftover files.

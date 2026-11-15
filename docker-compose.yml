@@ -31,6 +31,23 @@ services:
         condition: service_healthy
     volumes:
       - aye_media:/data/media
+  worker:
+    build: ./backend
+    command: ["python", "-m", "app.worker"]
+    restart: unless-stopped
+    environment:
+      AYE_DATABASE_URL: postgresql+psycopg://aye:aye@db:5432/aye
+      AYE_MAX_PRODUCTION_ATTEMPTS: ${AYE_MAX_PRODUCTION_ATTEMPTS:-3}
+      AYE_PRODUCTION_STALE_AFTER_SECONDS: ${AYE_PRODUCTION_STALE_AFTER_SECONDS:-21600}
+      AYE_WORKER_POLL_SECONDS: ${AYE_WORKER_POLL_SECONDS:-2}
+      AYE_MEDIA_DIR: /data/media
+    depends_on:
+      db:
+        condition: service_healthy
+      api:
+        condition: service_started
+    volumes:
+      - aye_media:/data/media
   web:
     build: ./frontend
     environment:

@@ -1,21 +1,21 @@
 import hashlib
-import time
 from datetime import datetime
 from pathlib import Path
+from typing import Literal
 from uuid import UUID, uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, ConfigDict
-from sqlalchemy import desc, select, text
+from sqlalchemy import desc, select
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
 from app.content_hashing import production_content_hash
 from app.database import get_db
-from app.models import Approval, ContentIdea, MediaAsset, ProductionAttempt, RenderedVideo, ScriptVersion, StoryboardVersion, WorkflowEvent, utc_now
+from app.models import Approval, ContentIdea, ProductionAttempt, RenderedVideo, StoryboardVersion, WorkflowEvent, utc_now
 from app.production.preview import render_silent_preview
-from app.production.render import render_production
+from app.production.jobs import execute_production_attempt, load_production_context, media_manifest, production_lock
 from app.security import require_api_token
 from app.workflows import record_workflow_event
 
@@ -40,6 +40,14 @@ class VideoRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
+class ProductionQueueResult(BaseModel):
+    attempt_id: UUID | None
+    status: Literal["queued", "completed"]
+    video_id: UUID | None
+    reused: bool
+    message: str
+
+
 def _video_read(video: RenderedVideo) -> VideoRead:
     result = VideoRead.model_validate(video)
     result.preview_url = f"/api/v1/videos/{video.id}/file"
@@ -62,23 +70,6 @@ def _file_matches(path: Path, root: Path, checksum: str) -> bool:
         return _sha256_file(path) == checksum
     except OSError:
         return False
-
-
-def _media_manifest(assets: dict[UUID, MediaAsset]) -> list[dict]:
-    return [{"asset_id": str(asset.id), "asset_type": asset.asset_type,
-             "license_type": asset.license_type, "source_url": asset.source_url,
-             "checksum": asset.checksum, "rights_confirmed": asset.rights_confirmed}
-            for asset in assets.values()]
-
-
-def _source_media_bytes(media_root: Path, assets: dict[UUID, MediaAsset]) -> int:
-    sizes = []
-    for asset in assets.values():
-        path = (media_root / asset.storage_key).resolve()
-        if path.parent != media_root or not path.is_file():
-            raise ValueError("A referenced media file is missing or outside media storage")
-        sizes.append(path.stat().st_size)
-    return sum(sizes)
 
 
 def _remove_generated_files(media_root: Path, *storage_keys: str) -> bool:
@@ -141,45 +132,13 @@ def render_preview(idea_id: UUID, storyboard_version_id: UUID = Query(...), db: 
              responses={200: {"model": VideoRead, "description": "Idempotent replay of an intact QA-passed render"},
                         409: {"description": "The exact content already has a human decision"}})
 def render_final_video(idea_id: UUID, response: Response, storyboard_version_id: UUID = Query(...), db: Session = Depends(get_db)):
-    idea = db.get(ContentIdea, idea_id)
-    if idea is None:
-        raise HTTPException(status_code=404, detail="Content idea not found")
-    storyboard = db.get(StoryboardVersion, storyboard_version_id)
-    if storyboard is None or storyboard.content_idea_id != idea_id:
-        raise HTTPException(status_code=404, detail="Storyboard version not found for this idea")
-
-    used_ids = {UUID(str(scene[field])) for scene in storyboard.scenes for field in ("image_asset_id", "audio_asset_id") if scene.get(field)}
-    if not used_ids or any(not scene.get("image_asset_id") or not scene.get("audio_asset_id") for scene in storyboard.scenes):
-        raise HTTPException(status_code=422, detail="Every production scene needs an uploaded image and voice audio asset")
-    assets = {asset.id: asset for asset in db.scalars(select(MediaAsset).where(MediaAsset.id.in_(used_ids))).all()}
-    if len(assets) != len(used_ids):
-        raise HTTPException(status_code=422, detail="A storyboard media asset is missing")
-    for scene in storyboard.scenes:
-        image = assets[UUID(str(scene["image_asset_id"]))]
-        audio = assets[UUID(str(scene["audio_asset_id"]))]
-        if image.asset_type != "image" or audio.asset_type != "audio" or not image.rights_confirmed or not audio.rights_confirmed:
-            raise HTTPException(status_code=422, detail="Storyboard asset types or rights confirmation are invalid")
-        if any(asset.license_type != "owned" for asset in (image, audio)) and not scene.get("source_attribution"):
-            raise HTTPException(status_code=422, detail="Non-owned storyboard media needs source attribution")
-
-    # Keep concurrent requests for the same immutable render inputs from both
-    # starting FFmpeg. The transaction lock is released on commit, error, or disconnect.
-    if db.bind is not None and db.bind.dialect.name == "postgresql":
-        lock_digest = hashlib.sha256(
-            f"aye:production:{idea_id}:{storyboard_version_id}".encode("ascii")
-        ).digest()
-        lock_keys = (int.from_bytes(lock_digest[:4], "big", signed=True),
-                     int.from_bytes(lock_digest[4:8], "big", signed=True))
-        db.execute(text("SELECT pg_advisory_xact_lock(:key1, :key2)"),
-                   {"key1": lock_keys[0], "key2": lock_keys[1]})
-
+    context = load_production_context(db, idea_id, storyboard_version_id)
+    idea, storyboard, script, assets = context.idea, context.storyboard, context.script, context.assets
+    production_lock(db, idea_id, storyboard_version_id)
     settings = get_settings()
-    media_dir = Path(settings.media_dir).resolve()
-    script = db.get(ScriptVersion, storyboard.script_version_id)
-    if script is None:
-        raise HTTPException(status_code=409, detail="Storyboard script version is missing")
+    media_dir = context.media_root
 
-    manifest = _media_manifest(assets)
+    manifest = media_manifest(assets)
     previous_renders = db.scalars(select(RenderedVideo).where(
         RenderedVideo.content_idea_id == idea_id,
         RenderedVideo.storyboard_version_id == storyboard_version_id,
@@ -209,7 +168,7 @@ def render_final_video(idea_id: UUID, response: Response, storyboard_version_id:
     running_attempt = db.scalar(select(ProductionAttempt).where(
         ProductionAttempt.content_idea_id == idea_id,
         ProductionAttempt.storyboard_version_id == storyboard_version_id,
-        ProductionAttempt.status == "running",
+        ProductionAttempt.status.in_(("queued", "running")),
     ))
     if running_attempt is not None:
         attempt_started_at = running_attempt.started_at
@@ -217,7 +176,7 @@ def render_final_video(idea_id: UUID, response: Response, storyboard_version_id:
             attempt_started_at = attempt_started_at.replace(tzinfo=utc_now().tzinfo)
         age_seconds = max(0, int((utc_now() - attempt_started_at).total_seconds()))
         raise HTTPException(status_code=409,
-                            detail=f"Production attempt {running_attempt.id} is still recorded as running ({age_seconds}s old). Inspect and recover a stale attempt in Operations before retrying.")
+                            detail=f"Production attempt {running_attempt.id} is already {running_attempt.status} ({age_seconds}s old). Check Operations before retrying.")
 
     attempt_events = db.scalars(select(WorkflowEvent).where(
         WorkflowEvent.content_idea_id == idea_id,
@@ -243,80 +202,79 @@ def render_final_video(idea_id: UUID, response: Response, storyboard_version_id:
                                 attempt_number=attempt_number, status="running", started_at=utc_now())
     db.add(attempt)
     db.commit()
-    render_started = time.perf_counter()
-    source_bytes: int | None = None
-    try:
-        source_bytes = _source_media_bytes(media_dir, assets)
-        result = render_production(storyboard.scenes, assets, video_id, media_dir,
-                                   settings.ffmpeg_binary, settings.ffprobe_binary, idea.format)
-        output_path = (media_dir / result["storage_key"]).resolve()
-        if output_path.parent != media_dir or not output_path.is_file():
-            raise ValueError("Rendered output is missing or outside media storage")
-        output_bytes = output_path.stat().st_size
-    except (RuntimeError, ValueError, OSError) as exc:
-        render_duration_seconds = round(time.perf_counter() - render_started, 3)
-        cleanup_succeeded = _remove_generated_files(media_dir, f"{video_id}.mp4", f"{video_id}-thumb.jpg")
-        attempt.status = "failed"
-        attempt.finished_at = utc_now()
-        attempt.render_duration_seconds = render_duration_seconds
-        attempt.source_bytes = source_bytes
-        attempt.failure_class = "input_validation" if isinstance(exc, ValueError) else "render_tool_or_storage"
-        previous_state = idea.status
-        idea.status = "PRODUCTION_FAILED"
-        record_workflow_event(db, idea.id, idea.status, "production_failed",
-                              "Production render failed; correct the source assets or rendering configuration before retrying",
-                              {"failure_class": "input_validation" if isinstance(exc, ValueError) else "render_tool_or_storage",
-                               "storyboard_version_id": str(storyboard_version_id),
-                               "attempt_id": str(attempt.id),
-                               "attempt_number": attempt_number,
-                               "render_duration_seconds": render_duration_seconds,
-                               "source_bytes": source_bytes,
-                               "partial_output_cleanup_succeeded": cleanup_succeeded},
-                              previous_state=previous_state, actor="system")
-        try:
-            db.commit()
-        except Exception:
-            db.rollback()
-            raise
-        raise HTTPException(status_code=503, detail=str(exc)) from exc
-    render_duration_seconds = round(time.perf_counter() - render_started, 3)
-    content_hash = production_content_hash(idea, script, storyboard, result["media_manifest"], result["checksum"])
-    video = RenderedVideo(id=video_id, content_idea_id=idea_id, storyboard_version_id=storyboard_version_id,
-                          storage_key=result["storage_key"], checksum=result["checksum"],
-                          content_hash=content_hash,
-                          duration_seconds=result["duration_seconds"], width=result["width"], height=result["height"],
-                          status=result["qa_report"]["status"], video_type="production",
-                          thumbnail_key=result["thumbnail_key"], media_manifest=result["media_manifest"],
-                          qa_report=result["qa_report"], created_at=utc_now())
-    attempt.status = "completed"
-    attempt.finished_at = utc_now()
-    attempt.render_duration_seconds = render_duration_seconds
-    attempt.source_bytes = source_bytes
-    attempt.output_bytes = output_bytes
-    attempt.video_id = video_id
-    db.add(video)
-    previous_state = idea.status
-    idea.status = video.status
-    record_workflow_event(db, idea.id, idea.status, "production_rendered",
-                          "Production render completed with technical QA",
-                          {"video_id": str(video.id), "content_hash": content_hash,
-                           "technical_qa_status": video.qa_report.get("status"),
-                           "storyboard_version_id": str(storyboard_version_id),
-                           "attempt_id": str(attempt.id),
-                           "attempt_number": attempt_number,
-                           "render_duration_seconds": render_duration_seconds,
-                           "source_bytes": source_bytes,
-                           "output_bytes": output_bytes},
-                          previous_state=previous_state)
-    try:
-        db.commit()
-        db.refresh(video)
-    except Exception:
-        db.rollback()
-        (media_dir / result["storage_key"]).unlink(missing_ok=True)
-        (media_dir / result["thumbnail_key"]).unlink(missing_ok=True)
-        raise
+    video, error = execute_production_attempt(db, attempt, context)
+    if error is not None or video is None:
+        raise HTTPException(status_code=503, detail=error or "Production render failed")
     return _video_read(video)
+
+
+@router.post("/ideas/{idea_id}/render-production-queue", response_model=ProductionQueueResult,
+             status_code=202,
+             responses={200: {"model": ProductionQueueResult, "description": "Reused an existing intact QA-passed render"}})
+def queue_production_render(idea_id: UUID, response: Response,
+                            storyboard_version_id: UUID = Query(...), db: Session = Depends(get_db)):
+    context = load_production_context(db, idea_id, storyboard_version_id)
+    production_lock(db, idea_id, storyboard_version_id)
+    media_root = context.media_root
+    manifest = media_manifest(context.assets)
+    previous_renders = db.scalars(select(RenderedVideo).where(
+        RenderedVideo.content_idea_id == idea_id,
+        RenderedVideo.storyboard_version_id == storyboard_version_id,
+        RenderedVideo.video_type == "production",
+    ).order_by(desc(RenderedVideo.created_at))).all()
+    for previous in previous_renders:
+        if previous.qa_report is None or previous.qa_report.get("status") != "TECHNICAL_QA_PASSED" or not previous.content_hash:
+            continue
+        same = production_content_hash(context.idea, context.script, context.storyboard, manifest, previous.checksum)
+        if same != previous.content_hash:
+            continue
+        if db.scalar(select(Approval.id).where(Approval.video_id == previous.id).limit(1)) is not None:
+            raise HTTPException(status_code=409, detail="This exact content version already has a human decision. Revise it before creating another render.")
+        intact_sources = all(_file_matches((media_root / asset.storage_key).resolve(), media_root, asset.checksum)
+                             for asset in context.assets.values())
+        video_path = (media_root / previous.storage_key).resolve()
+        thumb_path = (media_root / previous.thumbnail_key).resolve() if previous.thumbnail_key else None
+        if (intact_sources and _file_matches(video_path, media_root, previous.checksum)
+                and thumb_path is not None and thumb_path.parent == media_root and thumb_path.is_file()):
+            response.status_code = 200
+            return ProductionQueueResult(attempt_id=None, status="completed", video_id=previous.id,
+                                         reused=True, message="Reused the existing intact QA-passed render")
+
+    active = db.scalar(select(ProductionAttempt).where(
+        ProductionAttempt.content_idea_id == idea_id,
+        ProductionAttempt.storyboard_version_id == storyboard_version_id,
+        ProductionAttempt.status.in_(("queued", "running")),
+    ))
+    if active is not None:
+        raise HTTPException(status_code=409, detail=f"Production attempt {active.id} is already {active.status}")
+    history = db.scalars(select(WorkflowEvent).where(
+        WorkflowEvent.content_idea_id == idea_id,
+        WorkflowEvent.event_type.in_(("production_failed", "production_rendered")),
+    )).all()
+    legacy_count = sum(1 for event in history
+                       if (event.metadata_json or {}).get("storyboard_version_id") == str(storyboard_version_id))
+    attempts = db.scalars(select(ProductionAttempt).where(
+        ProductionAttempt.content_idea_id == idea_id,
+        ProductionAttempt.storyboard_version_id == storyboard_version_id,
+    )).all()
+    count = max(legacy_count, len(attempts))
+    if count >= context.settings.max_production_attempts:
+        raise HTTPException(status_code=409,
+                            detail=f"This storyboard reached the {context.settings.max_production_attempts}-attempt render limit. Revise the storyboard or its media inputs before trying again.")
+    attempt = ProductionAttempt(id=uuid4(), content_idea_id=idea_id,
+                                storyboard_version_id=storyboard_version_id,
+                                attempt_number=count + 1, status="queued", started_at=utc_now())
+    db.add(attempt)
+    previous_state = context.idea.status
+    context.idea.status = "PRODUCTION_QUEUED"
+    record_workflow_event(db, idea_id, context.idea.status, "production_queued",
+                          "Production render queued for the local background worker",
+                          {"attempt_id": str(attempt.id), "storyboard_version_id": str(storyboard_version_id),
+                           "attempt_number": attempt.attempt_number},
+                          previous_state=previous_state)
+    db.commit()
+    return ProductionQueueResult(attempt_id=attempt.id, status="queued", video_id=None,
+                                 reused=False, message="Queued for background rendering")
 
 
 @router.get("/videos/{video_id}", response_model=VideoRead)

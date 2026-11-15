@@ -58,7 +58,7 @@ class ProductionAttemptRead(BaseModel):
     content_idea_id: UUID
     storyboard_version_id: UUID
     attempt_number: int
-    status: Literal["running", "completed", "failed"]
+    status: Literal["queued", "running", "completed", "failed"]
     started_at: datetime
     finished_at: datetime | None
     video_id: UUID | None
@@ -222,6 +222,15 @@ def list_production_attempts(limit: int = Query(default=50, ge=1, le=200), db: S
     attempts = db.scalars(select(ProductionAttempt).order_by(ProductionAttempt.started_at.desc()).limit(limit)).all()
     now = utc_now()
     return [_attempt_read(attempt, now, settings.production_stale_after_seconds) for attempt in attempts]
+
+
+@router.get("/production-attempts/{attempt_id}", response_model=ProductionAttemptRead)
+def get_production_attempt(attempt_id: UUID, db: Session = Depends(get_db)):
+    attempt = db.get(ProductionAttempt, attempt_id)
+    if attempt is None:
+        raise HTTPException(status_code=404, detail="Production attempt not found")
+    settings = get_settings()
+    return _attempt_read(attempt, utc_now(), settings.production_stale_after_seconds)
 
 
 @router.post("/production-attempts/{attempt_id}/recover", response_model=ProductionAttemptRead)

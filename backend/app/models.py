@@ -141,7 +141,8 @@ class ProductionAttempt(Base):
     __table_args__ = (
         Index("ix_production_attempts_storyboard_started", "content_idea_id", "storyboard_version_id", "started_at"),
         Index("uq_production_attempts_active", "content_idea_id", "storyboard_version_id", unique=True,
-              postgresql_where=text("status = 'running'"), sqlite_where=text("status = 'running'")),
+              postgresql_where=text("status IN ('queued', 'running')"),
+              sqlite_where=text("status IN ('queued', 'running')")),
     )
 
     id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True, default=uuid4)

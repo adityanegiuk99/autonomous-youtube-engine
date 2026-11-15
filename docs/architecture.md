@@ -8,7 +8,7 @@ Autonomous YouTube Engine (AYE) starts as a single-owner, modular monolith. The 
 
 - **Web:** Next.js dashboard; calls the versioned FastAPI API.
 - **API:** FastAPI application, authentication/authorization boundary, validation, and orchestration entry points.
-- **Worker:** background processing for discovery, research, production, publishing, and analytics. The initial scaffold does not yet run workers.
+- **Worker:** the Compose production worker claims durable PostgreSQL render attempts and runs FFmpeg. Discovery, research, publishing, and analytics workers are not implemented.
 - **PostgreSQL:** durable application records and workflow state.
 - **Redis:** later background queue, cache, and coordination.
 - **Media storage:** local development directory initially; object storage behind an adapter later.
@@ -53,9 +53,9 @@ See [data-model.md](data-model.md) for the initial entity contract.
 - IDs: UUIDs; all persisted timestamps are UTC.
 - State changes are explicit and validated; clients do not set internal workflow states directly.
 - Provider calls have timeouts, bounded retries, and idempotency keys where the provider supports them.
-- Redis/Celery and LangGraph are introduced when an actual asynchronous workflow exists, not as empty dependencies in the foundation.
+- A PostgreSQL-backed worker currently handles asynchronous production renders; Redis/Celery and LangGraph remain future options for additional job types and persistent agent graphs.
 - Database migrations are required before schema changes are deployed.
-- Workflow history remains an audit timeline rather than a job queue. Production attempts are durably recorded and stale attempts can be recovered manually, but background execution, automatic retries, and resumable FFmpeg checkpoints are not implemented.
+- Workflow history remains an audit timeline. Production attempts are durably queued and run by a separate worker; stale attempts can be recovered manually. Automatic retries, worker heartbeats, and resumable FFmpeg checkpoints are not implemented.
 
 ## Open decisions
 
