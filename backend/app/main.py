@@ -15,6 +15,7 @@ from app.routers.analytics import router as analytics_router
 from app.routers.workflows import router as workflows_router
 from app.routers.operations import router as operations_router
 from app.routers.dashboard import router as dashboard_router
+from app.routers.publishing import router as publishing_router
 from app.security import require_api_token
 
 settings = get_settings()
@@ -38,6 +39,7 @@ app.include_router(analytics_router, prefix="/api/v1")
 app.include_router(workflows_router, prefix="/api/v1")
 app.include_router(operations_router, prefix="/api/v1")
 app.include_router(dashboard_router, prefix="/api/v1")
+app.include_router(publishing_router, prefix="/api/v1")
 
 
 @app.get("/api/v1/health", tags=["health"])

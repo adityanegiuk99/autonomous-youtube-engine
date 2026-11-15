@@ -51,3 +51,7 @@ The API container applies Alembic migrations at startup. Before updating an inst
 ## Inspect local media integrity
 
 The Operations page offers a read-only media audit at `GET /api/v1/operations/media-integrity`. It checks that database-referenced source assets, rendered videos, and thumbnails exist under the configured media directory; it compares source and render checksums where the database stores one. It also lists up to 100 unreferenced files. The audit does not delete or repair anything. Review orphan entries before manual cleanup, since interrupted operations may leave files that still matter to an operator. Run it after a restore or storage move, then open important renders in the Approval Center.
+
+## Local publishing schedule
+
+The Publishing page can save and cancel private-only schedule records for an exact, currently approved render. It does not upload or publish content. Cancelling a local entry does not undo an external action because none is attempted. Configure Google OAuth and implement resumable upload and recovery before treating any item as YouTube-scheduled.

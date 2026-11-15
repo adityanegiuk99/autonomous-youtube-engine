@@ -47,6 +47,9 @@ Source packs preserve RSS metadata and URLs but do not verify factual claims. AI
 | GET | `/analytics/channels/{channel_id}/insights` | Return exploratory metric comparisons for channel learning |
 | GET | `/operations/render-usage?days=30` | Summarize local production render duration, bytes, and outcomes for 1–365 days |
 | GET | `/operations/media-integrity` | Check local referenced media files and report mismatches, missing files, unsafe references, and up to 100 orphans |
+| GET | `/publishing/jobs` | List local publishing schedule records; these are not YouTube uploads |
+| POST | `/publishing/jobs` | Save a future private-only schedule for an exact-hash approved render |
+| DELETE | `/publishing/jobs/{job_id}` | Cancel a local schedule record |
 | GET | `/dashboard/summary` | Return persisted channel, trend, idea, and render summary counts with recent items |
 
 The opportunity score uses the blueprint's weighted formula. The RSS heuristic is used as the trend-velocity input, and engagement, audience relevance, originality, and research quality are user estimates. Script and storyboard endpoints save human input; they do not claim AI generation.
@@ -62,6 +65,8 @@ Production render requests for the same idea/storyboard are serialized by a Post
 The operations usage endpoint reports measured production render wall time, source-media bytes, output bytes, and technical outcomes from workflow events. Historical events without measurement fields are counted as unmeasured. It does not estimate electricity, rupee cost, cloud usage, LLM usage, or YouTube API charges.
 
 The read-only media integrity endpoint hashes source assets and rendered videos where checksums are recorded, verifies that referenced files remain inside the configured media directory, and checks thumbnails for presence. It does not delete or repair files.
+
+Local publishing schedules require a passing production QA result, an `approve` human decision for the currently active content hash, intact source/render files, and a future timezone-aware schedule. Visibility is fixed to `private`. These records prepare metadata and timing only; no OAuth, upload, or external scheduling call exists yet.
 
 ## Trend intelligence
 

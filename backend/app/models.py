@@ -149,6 +149,25 @@ class Approval(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utc_now)
 
 
+class PublishJob(Base):
+    __tablename__ = "publish_jobs"
+    __table_args__ = (UniqueConstraint("video_id", name="uq_publish_jobs_video"),)
+
+    id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True, default=uuid4)
+    video_id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), ForeignKey("videos.id", ondelete="RESTRICT"), nullable=False, index=True)
+    approval_id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), ForeignKey("approvals.id", ondelete="RESTRICT"), nullable=False)
+    channel_id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), ForeignKey("channels.id", ondelete="RESTRICT"), nullable=False, index=True)
+    content_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    title: Mapped[str] = mapped_column(String(100), nullable=False)
+    description: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    tags: Mapped[list[str]] = mapped_column(JSON, nullable=False, default=list)
+    scheduled_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, index=True)
+    visibility: Mapped[str] = mapped_column(String(16), nullable=False, default="private")
+    status: Mapped[str] = mapped_column(String(32), nullable=False, default="scheduled_local")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utc_now)
+    cancelled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
 class AnalyticsSnapshot(Base):
     __tablename__ = "analytics_snapshots"
     __table_args__ = (UniqueConstraint("channel_id", "external_video_id", "collected_at", name="uq_analytics_channel_video_date"),)

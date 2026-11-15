@@ -18,7 +18,7 @@ This is the conceptual model, not a claim that every table is implemented. Postg
 | Video | idea, storyboard version, render asset, thumbnail, media manifest, technical QA report, content hash |
 | Approval | video, exact content hash, reviewer, decision, notes, timestamp |
 | WorkflowEvent | content idea, previous/current state, event type, actor, reason, safe metadata, timestamp |
-| PublishJob | video, approval, channel, visibility/schedule, idempotency key, provider ID, status |
+| PublishJob | video, approval, channel, content hash, metadata, private visibility, local schedule, status |
 | AnalyticsSnapshot | configured channel, external video ID, metrics, CSV import batch, collection time |
 | AgentRun | workflow subject, agent/type, status, attempt, bounded logs, timestamps |
 | WorkflowCheckpoint | workflow ID, subject, serialized state reference, schema version, updated time |
@@ -30,10 +30,11 @@ This is the conceptual model, not a claim that every table is implemented. Postg
 - Unique external channel identity per platform account where applicable.
 - Unique `(content_idea_id, version)` for scripts/storyboards.
 - Approval is valid only when the current video content hash equals the approved hash and QA is passing.
-- Publish jobs are idempotent per approved video/version and destination channel.
+- A local publish schedule is permitted only for a passing render with a current human approval matching the exact content hash; local schedules do not imply upload.
+- One local publish schedule is allowed per video; retrying the same schedule request is idempotent.
 - Never store plaintext OAuth refresh tokens; avoid secret values in logs and serialized workflow state.
 - Analytics values preserve provider collection time and metric provenance; missing values are not silently converted to zero.
 
 ## Foundation implementation
 
-Implemented migrations currently cover channel configuration, trend items, opportunity ideas, human-authored script/storyboard versions, silent previews, RSS source packs, uploaded media assets, technical QA metadata, content-hash-bound human approvals, imported analytics snapshots, and append-only workflow event history. User identity, OAuth connections, verified research claims, publishing jobs, and live analytics integrations remain future migrations. The initial API must not expose fields that imply an external account has been connected or verified.
+Implemented migrations currently cover channel configuration, trend items, opportunity ideas, human-authored script/storyboard versions, silent previews, RSS source packs, uploaded media assets, technical QA metadata, content-hash-bound human approvals, imported analytics snapshots, append-only workflow event history, and local private-only publishing schedules. User identity, OAuth connections, verified research claims, resumable upload state, and live analytics integrations remain future migrations. The initial API must not expose fields that imply an external account has been connected or verified.

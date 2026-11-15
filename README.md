@@ -17,6 +17,7 @@ docker compose up --build
 - Trend Radar: <http://localhost:3000/trends>
 - Content pipeline: <http://localhost:3000/ideas>
 - Approval Center: <http://localhost:3000/approvals>
+- Publishing calendar: <http://localhost:3000/publishing>
 - Operations and Cost Monitor: <http://localhost:3000/operations>
 
 The dashboard prompts for the token and keeps it in browser session storage. The Compose database credentials are for local development only. The bearer token is single-owner local access control, not production authentication or multi-user authorization; do not expose this stack publicly.
@@ -35,7 +36,7 @@ Set `AYE_RSS_FEED_URLS` in root `.env` for Docker Compose, or in `backend/.env` 
 
 The animatic endpoint creates silent text cards. Production rendering uses rights-attested user-uploaded images and voice audio, adds scene-level subtitle overlays and a thumbnail, and performs technical container QA. The approval endpoint binds a human decision to the rendered and source hashes and requires review confirmations. It does not independently verify content claims or license terms and is not YouTube publish authorization.
 
-The Analytics page accepts normalized cumulative CSV snapshots and summarizes the latest row per video. With at least 10 videos, it compares CTR and average view duration across the highest and lowest view quartiles to suggest editorial review hypotheses. These comparisons are exploratory, not adjusted for age/format/topic/promotion, and do not establish causality. The page is not connected to YouTube Analytics. The Operations page measures local production render time and media bytes; it has no financial cost, cloud, or provider usage data.
+The Analytics page accepts normalized cumulative CSV snapshots and summarizes the latest row per video. With at least 10 videos, it compares CTR and average view duration across the highest and lowest view quartiles to suggest editorial review hypotheses. These comparisons are exploratory, not adjusted for age/format/topic/promotion, and do not establish causality. The page is not connected to YouTube Analytics. The Publishing calendar records private-only local schedule metadata for current human approvals; it does not call YouTube or upload anything. The Operations page measures local production render time and media bytes and can audit local media file integrity; it has no financial cost, cloud, or provider usage data.
 
 ## Current limits
 
