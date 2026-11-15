@@ -1,6 +1,6 @@
 # Autonomous YouTube Engine (AYE)
 
-AYE is planned as a human-approved, multi-channel content operations platform. The repository is progressing through **Phases 1–6**. It includes FastAPI, PostgreSQL migrations, channel CRUD, RSS discovery/source packs, opportunity scoring, versioned human-authored scripts/storyboards, media-backed FFmpeg rendering, technical QA, and exact-version human approval.
+AYE is planned as a human-approved, multi-channel content operations platform. The repository is progressing through **Phases 1–7**. It includes FastAPI, PostgreSQL migrations, channel CRUD, RSS discovery/source packs, opportunity scoring, versioned human-authored scripts/storyboards, media-backed FFmpeg rendering, technical QA, exact-version human approval, and sample-aware CSV analytics imports.
 
 ## Run locally with Docker
 
@@ -31,6 +31,8 @@ Set `AYE_RSS_FEED_URLS` in root `.env` for Docker Compose, or in `backend/.env` 
 
 The animatic endpoint creates silent text cards. Production rendering uses rights-attested user-uploaded images and voice audio, adds scene-level subtitle overlays and a thumbnail, and performs technical container QA. The approval endpoint binds a human decision to the rendered and source hashes and requires review confirmations. It does not independently verify content claims or license terms and is not YouTube publish authorization.
 
+The Analytics page accepts normalized cumulative CSV snapshots and summarizes the latest row per video. It is not connected to YouTube Analytics and only emits descriptive summaries, with a small-sample warning.
+
 ## Current limits
 
-Channel records are configuration only and do not indicate that a YouTube account is connected. Multi-user authentication, Google OAuth, AI research/script generation, TTS, publishing, analytics, and Redis workers are not implemented yet. See [the roadmap](docs/roadmap.md), [architecture](docs/architecture.md), [data model](docs/data-model.md), [agent contracts](docs/agent-contracts.md), and [API contract](docs/api.md).
+Channel records are configuration only and do not indicate that a YouTube account is connected. Multi-user authentication, Google OAuth, AI research/script generation, TTS, publishing, live YouTube Analytics integration, and Redis workers are not implemented yet. See [the roadmap](docs/roadmap.md), [architecture](docs/architecture.md), [data model](docs/data-model.md), [agent contracts](docs/agent-contracts.md), and [API contract](docs/api.md).

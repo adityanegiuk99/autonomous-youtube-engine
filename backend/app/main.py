@@ -11,6 +11,7 @@ from app.routers.videos import router as videos_router
 from app.routers.research import router as research_router
 from app.routers.media_assets import router as media_assets_router
 from app.routers.approvals import router as approvals_router
+from app.routers.analytics import router as analytics_router
 from app.security import require_api_token
 
 settings = get_settings()
@@ -30,6 +31,7 @@ app.include_router(videos_router, prefix="/api/v1")
 app.include_router(research_router, prefix="/api/v1")
 app.include_router(media_assets_router, prefix="/api/v1")
 app.include_router(approvals_router, prefix="/api/v1")
+app.include_router(analytics_router, prefix="/api/v1")
 
 
 @app.get("/api/v1/health", tags=["health"])

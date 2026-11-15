@@ -18,7 +18,7 @@ Channel fields: `name` (required), `niche`, `language`, `target_country`, `descr
 
 ## Remaining resource groups
 
-Source packs preserve RSS metadata and URLs but do not verify factual claims. AI research synthesis, publishing, analytics, and agent-run monitoring are not implemented. Human approval is available only for exact production versions with technical QA; publishing routes must additionally enforce channel ownership and OAuth authorization.
+Source packs preserve RSS metadata and URLs but do not verify factual claims. AI research synthesis, live YouTube publishing/analytics, and agent-run monitoring are not implemented. Human approval is available only for exact production versions with technical QA; publishing routes must additionally enforce channel ownership and OAuth authorization.
 
 ## Opportunity and content endpoints
 
@@ -40,10 +40,15 @@ Source packs preserve RSS metadata and URLs but do not verify factual claims. AI
 | GET | `/videos?idea_id=&limit=50` | List rendered previews |
 | GET | `/videos/{id}` | Retrieve preview metadata |
 | GET | `/videos/{id}/file` | Download the MP4 preview |
+| GET | `/analytics/csv-template` | Download the normalized analytics CSV header |
+| POST | `/analytics/import?channel_id=` | Import cumulative CSV snapshots for a configured channel |
+| GET | `/analytics/channels/{channel_id}` | Summarize the latest imported row for each video |
 
 The opportunity score uses the blueprint's weighted formula. The RSS heuristic is used as the trend-velocity input, and engagement, audience relevance, originality, and research quality are user estimates. Script and storyboard endpoints save human input; they do not claim AI generation.
 
 Preview rendering creates scene cards from storyboard text and exports a silent MP4. Production rendering requires a rights-attested image and audio asset for every scene, uses scene-level subtitle overlays, generates a thumbnail, and checks MP4/H.264/AAC, resolution, duration, and source-file integrity. Human approval requires four review confirmations, checks that source/render files and version hashes still match, and rejects stale script/storyboard versions. Technical QA does not verify editorial claims or the truth of user-supplied license declarations. Approval is not YouTube publish authorization. Files are stored in the `aye_media` Docker volume.
+
+Analytics CSV imports require the exact header from `/analytics/csv-template`. CTR is a percentage from 0 to 100; dates must be ISO formatted; each row is a cumulative snapshot for one video/date. Summaries select the latest imported row per video and label small samples; no live provider API or causal recommendations are implied.
 
 ## Trend intelligence
 
