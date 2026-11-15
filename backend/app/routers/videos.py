@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session
 from app.config import get_settings
 from app.content_hashing import production_content_hash
 from app.database import get_db
-from app.models import Approval, ContentIdea, MediaAsset, RenderedVideo, ScriptVersion, StoryboardVersion, WorkflowEvent, utc_now
+from app.models import Approval, ContentIdea, MediaAsset, ProductionAttempt, RenderedVideo, ScriptVersion, StoryboardVersion, WorkflowEvent, utc_now
 from app.production.preview import render_silent_preview
 from app.production.render import render_production
 from app.security import require_api_token
@@ -206,20 +206,43 @@ def render_final_video(idea_id: UUID, response: Response, storyboard_version_id:
             response.status_code = 200
             return _video_read(previous)
 
+    running_attempt = db.scalar(select(ProductionAttempt).where(
+        ProductionAttempt.content_idea_id == idea_id,
+        ProductionAttempt.storyboard_version_id == storyboard_version_id,
+        ProductionAttempt.status == "running",
+    ))
+    if running_attempt is not None:
+        attempt_started_at = running_attempt.started_at
+        if attempt_started_at.tzinfo is None:
+            attempt_started_at = attempt_started_at.replace(tzinfo=utc_now().tzinfo)
+        age_seconds = max(0, int((utc_now() - attempt_started_at).total_seconds()))
+        raise HTTPException(status_code=409,
+                            detail=f"Production attempt {running_attempt.id} is still recorded as running ({age_seconds}s old). Inspect and recover a stale attempt in Operations before retrying.")
+
     attempt_events = db.scalars(select(WorkflowEvent).where(
         WorkflowEvent.content_idea_id == idea_id,
         WorkflowEvent.event_type.in_(("production_failed", "production_rendered")),
     )).all()
-    completed_attempts = sum(
+    legacy_attempt_count = sum(
         1 for event in attempt_events
-        if event.metadata_json.get("storyboard_version_id") == str(storyboard_version_id)
+        if (event.metadata_json or {}).get("storyboard_version_id") == str(storyboard_version_id)
     )
-    if completed_attempts >= settings.max_production_attempts:
+    attempt_rows = db.scalars(select(ProductionAttempt).where(
+        ProductionAttempt.content_idea_id == idea_id,
+        ProductionAttempt.storyboard_version_id == storyboard_version_id,
+    )).all()
+    recorded_attempts = max(legacy_attempt_count, len(attempt_rows))
+    if recorded_attempts >= settings.max_production_attempts:
         raise HTTPException(status_code=409,
                             detail=f"This storyboard reached the {settings.max_production_attempts}-attempt render limit. Revise the storyboard or its media inputs before trying again.")
-    attempt_number = completed_attempts + 1
+    attempt_number = recorded_attempts + 1
 
     video_id = uuid4()
+    attempt = ProductionAttempt(id=video_id, content_idea_id=idea_id,
+                                storyboard_version_id=storyboard_version_id,
+                                attempt_number=attempt_number, status="running", started_at=utc_now())
+    db.add(attempt)
+    db.commit()
     render_started = time.perf_counter()
     source_bytes: int | None = None
     try:
@@ -233,12 +256,18 @@ def render_final_video(idea_id: UUID, response: Response, storyboard_version_id:
     except (RuntimeError, ValueError, OSError) as exc:
         render_duration_seconds = round(time.perf_counter() - render_started, 3)
         cleanup_succeeded = _remove_generated_files(media_dir, f"{video_id}.mp4", f"{video_id}-thumb.jpg")
+        attempt.status = "failed"
+        attempt.finished_at = utc_now()
+        attempt.render_duration_seconds = render_duration_seconds
+        attempt.source_bytes = source_bytes
+        attempt.failure_class = "input_validation" if isinstance(exc, ValueError) else "render_tool_or_storage"
         previous_state = idea.status
         idea.status = "PRODUCTION_FAILED"
         record_workflow_event(db, idea.id, idea.status, "production_failed",
                               "Production render failed; correct the source assets or rendering configuration before retrying",
                               {"failure_class": "input_validation" if isinstance(exc, ValueError) else "render_tool_or_storage",
                                "storyboard_version_id": str(storyboard_version_id),
+                               "attempt_id": str(attempt.id),
                                "attempt_number": attempt_number,
                                "render_duration_seconds": render_duration_seconds,
                                "source_bytes": source_bytes,
@@ -259,6 +288,12 @@ def render_final_video(idea_id: UUID, response: Response, storyboard_version_id:
                           status=result["qa_report"]["status"], video_type="production",
                           thumbnail_key=result["thumbnail_key"], media_manifest=result["media_manifest"],
                           qa_report=result["qa_report"], created_at=utc_now())
+    attempt.status = "completed"
+    attempt.finished_at = utc_now()
+    attempt.render_duration_seconds = render_duration_seconds
+    attempt.source_bytes = source_bytes
+    attempt.output_bytes = output_bytes
+    attempt.video_id = video_id
     db.add(video)
     previous_state = idea.status
     idea.status = video.status
@@ -267,6 +302,7 @@ def render_final_video(idea_id: UUID, response: Response, storyboard_version_id:
                           {"video_id": str(video.id), "content_hash": content_hash,
                            "technical_qa_status": video.qa_report.get("status"),
                            "storyboard_version_id": str(storyboard_version_id),
+                           "attempt_id": str(attempt.id),
                            "attempt_number": attempt_number,
                            "render_duration_seconds": render_duration_seconds,
                            "source_bytes": source_bytes,

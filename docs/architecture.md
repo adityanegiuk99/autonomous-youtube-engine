@@ -55,7 +55,7 @@ See [data-model.md](data-model.md) for the initial entity contract.
 - Provider calls have timeouts, bounded retries, and idempotency keys where the provider supports them.
 - Redis/Celery and LangGraph are introduced when an actual asynchronous workflow exists, not as empty dependencies in the foundation.
 - Database migrations are required before schema changes are deployed.
-- Current workflow history is an audit timeline only; it does not imply background execution, retry safety, or resumable checkpoints.
+- Workflow history remains an audit timeline rather than a job queue. Production attempts are durably recorded and stale attempts can be recovered manually, but background execution, automatic retries, and resumable FFmpeg checkpoints are not implemented.
 
 ## Open decisions
 

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import "../channels.css";
 import "./operations.css";
 import { apiFetch } from "../lib/api";
@@ -12,6 +12,7 @@ type Usage = {
 };
 type IntegrityIssue = { category: string; record_type: string; record_id: string | null; storage_key: string };
 type IntegrityReport = { checked_at: string; storage_root_available: boolean; referenced_files_checked: number; issues: IntegrityIssue[]; orphan_files_truncated: boolean; note: string };
+type ProductionAttempt = { id: string; content_idea_id: string; storyboard_version_id: string; attempt_number: number; status: "running" | "completed" | "failed"; started_at: string; finished_at: string | null; video_id: string | null; render_duration_seconds: number | null; source_bytes: number | null; output_bytes: number | null; failure_class: string | null; is_stale: boolean; age_seconds: number };
 const api = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000/api/v1";
 const integer = (value: number) => new Intl.NumberFormat().format(value);
 const bytes = (value: number) => value < 1024 * 1024 ? `${(value / 1024).toFixed(1)} KB` : `${(value / (1024 * 1024)).toFixed(2)} MB`;
@@ -25,6 +26,32 @@ export default function OperationsPage() {
   const [integrity, setIntegrity] = useState<IntegrityReport | null>(null);
   const [integrityBusy, setIntegrityBusy] = useState(false);
   const [integrityError, setIntegrityError] = useState("");
+  const [attempts, setAttempts] = useState<ProductionAttempt[]>([]);
+  const [attemptError, setAttemptError] = useState("");
+  const [recovering, setRecovering] = useState("");
+
+  const loadAttempts = useCallback(async () => {
+    setAttemptError("");
+    try {
+      const response = await apiFetch(`${api}/operations/production-attempts?limit=50`);
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.detail ?? "Could not load production attempts");
+      setAttempts(data);
+    } catch (reason) { setAttemptError(reason instanceof Error ? reason.message : "Could not load production attempts"); }
+  }, []);
+
+  async function recoverAttempt(attempt: ProductionAttempt) {
+    setRecovering(attempt.id); setAttemptError("");
+    try {
+      const response = await apiFetch(`${api}/operations/production-attempts/${attempt.id}/recover`, { method: "POST" });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.detail ?? "Could not recover production attempt");
+      await loadAttempts();
+    } catch (reason) { setAttemptError(reason instanceof Error ? reason.message : "Could not recover production attempt"); }
+    finally { setRecovering(""); }
+  }
+
+  useEffect(() => { void loadAttempts(); }, [loadAttempts]);
 
   async function auditMedia() {
     setIntegrityBusy(true); setIntegrityError("");
@@ -75,6 +102,12 @@ export default function OperationsPage() {
         {integrity.issues.length > 0 && <div className="integrity-issues">{integrity.issues.map((issue, index) => <div key={`${issue.category}-${issue.storage_key}-${index}`}><strong>{issue.category.replaceAll("_", " ")}</strong><span>{issue.record_type}{issue.record_id ? ` · ${issue.record_id}` : ""}</span><code>{issue.storage_key}</code></div>)}</div>}
         <p className="trend-method">{integrity.note}</p>
       </>}
+    </section>
+    <section className="production-attempts">
+      <div className="section-heading"><div><h3>Production attempts and recovery</h3><p className="muted">Committed attempt state survives API process restarts. Stale attempts need operator recovery before retry.</p></div><button className="secondary" onClick={() => void loadAttempts()}>Refresh attempts</button></div>
+      {attemptError && <p className="error-message">{attemptError}</p>}
+      {!attempts.length && !attemptError && <p className="muted">No production attempts have been recorded.</p>}
+      {attempts.map(attempt => <article className="production-attempt-row" key={attempt.id}><div><strong>Attempt {attempt.attempt_number} · {attempt.status.replaceAll("_", " ")}{attempt.failure_class ? ` · ${attempt.failure_class.replaceAll("_", " ")}` : ""}</strong><p>{new Date(attempt.started_at).toLocaleString()} · {duration(attempt.render_duration_seconds)} · storyboard {attempt.storyboard_version_id.slice(0, 8)}</p><small>{attempt.id}{attempt.status === "running" ? ` · running ${Math.floor(attempt.age_seconds / 60)} min` : ""}</small></div>{attempt.is_stale && <button className="secondary reject-button" disabled={recovering === attempt.id} onClick={() => void recoverAttempt(attempt)}>{recovering === attempt.id ? "Recovering…" : "Recover interrupted attempt"}</button>}</article>)}
     </section>
     {!busy && usage?.attempts === 0 && <article className="empty-card channel-empty"><div className="empty-icon">◷</div><h3>No production attempts in this window</h3><p>Render usage will appear here after a production attempt completes.</p><a className="secondary" href="/studio">Open Video Studio</a></article>}
   </main>;

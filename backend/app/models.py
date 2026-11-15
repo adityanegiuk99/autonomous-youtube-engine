@@ -1,7 +1,7 @@
 from datetime import datetime, timezone
 from uuid import UUID, uuid4
 
-from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Index, JSON, String, Text, UniqueConstraint
+from sqlalchemy import BigInteger, Boolean, DateTime, Float, ForeignKey, Index, JSON, String, Text, UniqueConstraint, text
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -134,6 +134,28 @@ class RenderedVideo(Base):
     media_manifest: Mapped[list[dict] | None] = mapped_column(JSON)
     qa_report: Mapped[dict | None] = mapped_column(JSON)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utc_now)
+
+
+class ProductionAttempt(Base):
+    __tablename__ = "production_attempts"
+    __table_args__ = (
+        Index("ix_production_attempts_storyboard_started", "content_idea_id", "storyboard_version_id", "started_at"),
+        Index("uq_production_attempts_active", "content_idea_id", "storyboard_version_id", unique=True,
+              postgresql_where=text("status = 'running'"), sqlite_where=text("status = 'running'")),
+    )
+
+    id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True, default=uuid4)
+    content_idea_id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), ForeignKey("content_ideas.id", ondelete="CASCADE"), nullable=False)
+    storyboard_version_id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), ForeignKey("storyboards.id", ondelete="RESTRICT"), nullable=False)
+    attempt_number: Mapped[int] = mapped_column(nullable=False)
+    status: Mapped[str] = mapped_column(String(24), nullable=False, default="running")
+    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utc_now)
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    video_id: Mapped[UUID | None] = mapped_column(PGUUID(as_uuid=True), ForeignKey("videos.id", ondelete="SET NULL"))
+    render_duration_seconds: Mapped[float | None] = mapped_column(Float)
+    source_bytes: Mapped[int | None] = mapped_column(BigInteger)
+    output_bytes: Mapped[int | None] = mapped_column(BigInteger)
+    failure_class: Mapped[str | None] = mapped_column(String(48))
 
 
 class Approval(Base):

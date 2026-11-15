@@ -55,3 +55,7 @@ The Operations page offers a read-only media audit at `GET /api/v1/operations/me
 ## Local publishing schedule
 
 The Publishing page can save and cancel private-only schedule records for an exact, currently approved render. It does not upload or publish content. Cancelling a local entry does not undo an external action because none is attempted. Configure Google OAuth and implement resumable upload and recovery before treating any item as YouTube-scheduled.
+
+## Recover an interrupted production render
+
+Production render attempts are committed before FFmpeg starts. If the API exits mid-render, the Operations page shows the attempt as running. Once it is older than `AYE_PRODUCTION_STALE_AFTER_SECONDS` (six hours by default), an operator can recover it. Recovery marks that attempt failed and removes its attempt-specific MP4 and thumbnail when possible. It does not resume FFmpeg from a checkpoint. The interrupted attempt counts against `AYE_MAX_PRODUCTION_ATTEMPTS`; inspect the source files and rendering configuration before retrying. If cleanup fails, use the media integrity audit to inspect leftover files.

@@ -1,19 +1,20 @@
 import math
 import hashlib
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Literal
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Query
-from pydantic import BaseModel
+from fastapi import APIRouter, Depends, HTTPException, Query
+from pydantic import BaseModel, ConfigDict
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
 from app.database import get_db
-from app.models import MediaAsset, RenderedVideo, WorkflowEvent, utc_now
+from app.models import ContentIdea, MediaAsset, ProductionAttempt, RenderedVideo, WorkflowEvent, utc_now
 from app.security import require_api_token
+from app.workflows import record_workflow_event
 
 router = APIRouter(prefix="/operations", tags=["operations"], dependencies=[Depends(require_api_token)])
 
@@ -50,6 +51,24 @@ class MediaIntegrityReport(BaseModel):
     issues: list[MediaIntegrityIssue]
     orphan_files_truncated: bool
     note: str
+
+
+class ProductionAttemptRead(BaseModel):
+    id: UUID
+    content_idea_id: UUID
+    storyboard_version_id: UUID
+    attempt_number: int
+    status: Literal["running", "completed", "failed"]
+    started_at: datetime
+    finished_at: datetime | None
+    video_id: UUID | None
+    render_duration_seconds: float | None
+    source_bytes: int | None
+    output_bytes: int | None
+    failure_class: str | None
+    is_stale: bool
+    age_seconds: int
+    model_config = ConfigDict(from_attributes=True)
 
 
 def _number(metadata: dict, key: str) -> float | None:
@@ -176,3 +195,83 @@ def media_integrity(db: Session = Depends(get_db)):
         orphan_files_truncated=truncated,
         note="Read-only local filesystem check. A clean report does not replace paired database and media backups.",
     )
+
+
+def _aware_utc(value: datetime) -> datetime:
+    return value.replace(tzinfo=timezone.utc) if value.tzinfo is None else value.astimezone(timezone.utc)
+
+
+def _attempt_read(attempt: ProductionAttempt, now: datetime, stale_after: int) -> ProductionAttemptRead:
+    age = max(0, int((now - _aware_utc(attempt.started_at)).total_seconds()))
+    return ProductionAttemptRead(
+        id=attempt.id, content_idea_id=attempt.content_idea_id,
+        storyboard_version_id=attempt.storyboard_version_id,
+        attempt_number=attempt.attempt_number, status=attempt.status,
+        started_at=attempt.started_at, finished_at=attempt.finished_at,
+        video_id=attempt.video_id, render_duration_seconds=attempt.render_duration_seconds,
+        source_bytes=attempt.source_bytes, output_bytes=attempt.output_bytes,
+        failure_class=attempt.failure_class,
+        is_stale=attempt.status == "running" and age >= stale_after,
+        age_seconds=age,
+    )
+
+
+@router.get("/production-attempts", response_model=list[ProductionAttemptRead])
+def list_production_attempts(limit: int = Query(default=50, ge=1, le=200), db: Session = Depends(get_db)):
+    settings = get_settings()
+    attempts = db.scalars(select(ProductionAttempt).order_by(ProductionAttempt.started_at.desc()).limit(limit)).all()
+    now = utc_now()
+    return [_attempt_read(attempt, now, settings.production_stale_after_seconds) for attempt in attempts]
+
+
+@router.post("/production-attempts/{attempt_id}/recover", response_model=ProductionAttemptRead)
+def recover_production_attempt(attempt_id: UUID, db: Session = Depends(get_db)):
+    attempt = db.scalar(select(ProductionAttempt).where(ProductionAttempt.id == attempt_id).with_for_update())
+    if attempt is None:
+        raise HTTPException(status_code=404, detail="Production attempt not found")
+    settings = get_settings()
+    if attempt.status != "running" and attempt.failure_class == "interrupted":
+        return _attempt_read(attempt, utc_now(), settings.production_stale_after_seconds)
+    if attempt.status != "running":
+        raise HTTPException(status_code=409, detail="Only an interrupted running attempt can be recovered")
+    now = utc_now()
+    started_at = _aware_utc(attempt.started_at)
+    age_seconds = max(0, int((now - started_at).total_seconds()))
+    if age_seconds < settings.production_stale_after_seconds:
+        raise HTTPException(status_code=409,
+                            detail=f"Attempt is {age_seconds}s old; recovery is allowed after {settings.production_stale_after_seconds}s")
+
+    media_root = Path(settings.media_dir).resolve()
+    cleanup_succeeded = True
+    for key in (f"{attempt.id}.mp4", f"{attempt.id}-thumb.jpg"):
+        path = media_root / key
+        if path.parent.resolve() != media_root:
+            cleanup_succeeded = False
+            continue
+        try:
+            path.unlink(missing_ok=True)
+        except OSError:
+            cleanup_succeeded = False
+
+    idea = db.get(ContentIdea, attempt.content_idea_id)
+    if idea is None:
+        raise HTTPException(status_code=409, detail="The content idea for this attempt no longer exists")
+    previous_state = idea.status
+    idea.status = "PRODUCTION_FAILED"
+    attempt.status = "failed"
+    attempt.finished_at = now
+    attempt.render_duration_seconds = round((now - started_at).total_seconds(), 3)
+    attempt.failure_class = "interrupted"
+    record_workflow_event(db, idea.id, idea.status, "production_failed",
+                          "Stale production attempt was recovered as interrupted; inspect the storyboard and media before retrying",
+                          {"storyboard_version_id": str(attempt.storyboard_version_id),
+                           "attempt_number": attempt.attempt_number,
+                           "attempt_id": str(attempt.id),
+                           "render_duration_seconds": attempt.render_duration_seconds,
+                           "source_bytes": attempt.source_bytes,
+                           "partial_output_cleanup_succeeded": cleanup_succeeded,
+                           "failure_class": "interrupted"},
+                          previous_state=previous_state, actor="local-owner")
+    db.commit()
+    db.refresh(attempt)
+    return _attempt_read(attempt, now, settings.production_stale_after_seconds)

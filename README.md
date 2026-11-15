@@ -1,10 +1,10 @@
 # Autonomous YouTube Engine (AYE)
 
-AYE is planned as a human-approved, multi-channel content operations platform. The repository is progressing through **Phases 1–8**. It includes FastAPI, PostgreSQL migrations, channel CRUD, RSS discovery/source packs, opportunity scoring, versioned human-authored scripts/storyboards, media-backed FFmpeg rendering, technical QA, exact-version human approval, a persistent Approval Center, normalized CSV analytics imports, sample-count-labeled exploratory learning hypotheses, a per-idea workflow audit timeline, and local render resource monitoring.
+AYE is planned as a human-approved, multi-channel content operations platform. The repository is progressing through **Phases 1–8**. It includes FastAPI, PostgreSQL migrations, channel CRUD, RSS discovery/source packs, opportunity scoring, versioned human-authored scripts/storyboards, media-backed FFmpeg rendering, technical QA, exact-version human approval, a persistent Approval Center, normalized CSV analytics imports, sample-count-labeled exploratory learning hypotheses, a per-idea workflow audit timeline, durable render attempt accounting with manual stale-attempt recovery, and local operations monitoring.
 
 ## Run locally with Docker
 
-From the repository root, copy `.env.example` to `.env`, generate a random token (at least 32 characters) with `python -c "import secrets; print(secrets.token_urlsafe(48))"`, and place it in `AYE_API_TOKEN`. Add trusted HTTPS RSS URLs to `AYE_RSS_FEED_URLS` if you want to use Trend Radar. Production rendering allows three completed attempts per storyboard by default; set `AYE_MAX_PRODUCTION_ATTEMPTS` to an integer from 1 to 10 to adjust this cap. Then run:
+From the repository root, copy `.env.example` to `.env`, generate a random token (at least 32 characters) with `python -c "import secrets; print(secrets.token_urlsafe(48))"`, and place it in `AYE_API_TOKEN`. Add trusted HTTPS RSS URLs to `AYE_RSS_FEED_URLS` if you want to use Trend Radar. Production rendering allows three attempts per storyboard by default; set `AYE_MAX_PRODUCTION_ATTEMPTS` from 1 to 10 to adjust the cap. A running attempt becomes recoverable after six hours by default; change `AYE_PRODUCTION_STALE_AFTER_SECONDS` (60–172800) to adjust that threshold. Then run:
 
 ```sh
 docker compose up --build
