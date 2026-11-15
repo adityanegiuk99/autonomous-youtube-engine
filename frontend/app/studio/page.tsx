@@ -163,6 +163,14 @@ export default function StudioPage() {
     } catch (e) { setError(e instanceof Error ? e.message : "Could not save script"); }
   }
 
+  function appendScriptOutline() {
+    const sections = selected?.format === "short"
+      ? ["Hook", "Context", "Main story", "Key information", "Payoff", "Optional CTA"]
+      : ["Opening", "Introduction", "Chapter 1", "Evidence and examples", "Detailed narrative", "Conclusion", "Optional CTA"];
+    const outline = sections.map(section => `## ${section}\n\n[Write this section]`).join("\n\n");
+    setScriptBody(current => current.trim() ? `${current.trimEnd()}\n\n${outline}` : outline);
+  }
+
   async function saveStoryboard(event: FormEvent<HTMLFormElement>) {
     event.preventDefault(); setError(""); setMessage("");
     try {
@@ -222,6 +230,9 @@ export default function StudioPage() {
   }
 
   const selected = ideas.find(idea => idea.id === ideaId);
+  const spokenDraft = scriptBody.split("\n").filter(line => !line.trimStart().startsWith("## ") && !/^\[.*\]$/.test(line.trim())).join(" ");
+  const scriptWordCount = spokenDraft.trim() ? spokenDraft.trim().split(/\s+/).length : 0;
+  const estimatedSpeechSeconds = Math.round(scriptWordCount / 140 * 60);
   return <main className="page-wrap">
     <div className="section-heading"><div><h2>Video Studio</h2><p className="muted">Version scripts and storyboards, then render a silent animatic for review.</p></div><a className="text-button" href="/ideas">← Content pipeline</a></div>
     <label className="studio-select">Content idea<select value={ideaId} onChange={event => setIdeaId(event.target.value)}><option value="">Choose an idea</option>{ideas.map(idea => <option key={idea.id} value={idea.id}>{idea.title} · {idea.format}</option>)}</select></label>
@@ -232,6 +243,7 @@ export default function StudioPage() {
       <form className="studio-panel" onSubmit={saveScript}>
         <div className="studio-panel-title"><h3>Script</h3><span>{scripts.length ? `${scripts.length} saved version(s)` : "No versions yet"}</span></div>
         <label>Human-authored script<textarea value={scriptBody} onChange={event => setScriptBody(event.target.value)} required maxLength={100000} placeholder="Write or paste your script. Saving creates an immutable version." /></label>
+        <div className="script-guidance"><span>{scriptWordCount} spoken words · about {estimatedSpeechSeconds} sec at 140 words/min</span><button className="secondary" type="button" onClick={appendScriptOutline}>Append {selected.format === "short" ? "Shorts" : "long-form"} outline</button></div>
         <div className="studio-select"><strong>Research dossiers to cite with this script</strong><small>Choose up to 20 versions; combined snapshots are limited to 500 KB.</small>{researchDossiers.length ? researchDossiers.map(dossier => <label className="review-check" key={dossier.id}><input type="checkbox" checked={selectedResearchIds.includes(dossier.id)} disabled={selectedResearchIds.length >= 20 && !selectedResearchIds.includes(dossier.id)} onChange={event => setSelectedResearchIds(current => event.target.checked ? [...current, dossier.id] : current.filter(id => id !== dossier.id))} />Version {dossier.version}: {dossier.content.topic}</label>) : <p className="muted">{selected?.trend_item_id ? "No manual dossier exists for this trend yet. Create one in Trend Radar." : "Link this idea to a trend to attach research dossiers."}</p>}</div>
         {scripts.find(item => item.id === scriptId)?.source_references?.map(source => <div className="scene-editor" key={source.research_document_id}><strong>Cited dossier v{source.version}: {source.content.topic}</strong>{source.content.claims?.map((claim, index) => <div key={index}><p>{claim.statement} · {claim.assessment}</p><div className="source-links">{claim.references.map(reference => <a href={reference.source_url} target="_blank" rel="noreferrer" key={reference.source_url}>{reference.source_title} ↗</a>)}</div></div>)}</div>)}
         <div className="studio-actions"><select value={scriptId} onChange={event => { const chosen = scripts.find(item => item.id === event.target.value); setScriptId(event.target.value); setScriptBody(chosen?.body ?? ""); setSelectedResearchIds(chosen?.source_references?.map(item => item.research_document_id) ?? []); }}><option value="">Current unsaved draft</option>{scripts.map(script => <option key={script.id} value={script.id}>Version {script.version}</option>)}</select><button className="primary" type="submit">Save new version</button></div>
